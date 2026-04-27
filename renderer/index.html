@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IPFS Privacy Desktop</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── Sidebar ── -->
+    <nav id="sidebar">
+      <div id="logo">
+        <span class="logo-icon">⬡</span>
+        <span class="logo-text">IPFS Privacy</span>
+      </div>
+      <ul id="nav-links">
+        <li class="nav-item active" data-page="dashboard">Dashboard</li>
+        <li class="nav-item" data-page="add">Add File</li>
+        <li class="nav-item" data-page="get">Get File</li>
+        <li class="nav-item" data-page="peers">Peers</li>
+        <li class="nav-item" data-page="cache">Cache</li>
+        <li class="nav-item" data-page="log">Event Log</li>
+        <li class="nav-item" data-page="settings">Settings</li>
+      </ul>
+      <div id="node-status">
+        <span id="status-dot" class="dot stopped"></span>
+        <span id="status-text">Stopped</span>
+        <button id="btn-toggle">Start Node</button>
+      </div>
+    </nav>
+
+    <!-- ── Main content ── -->
+    <main id="content">
+
+      <!-- Dashboard -->
+      <section id="page-dashboard" class="page active">
+        <h1>Dashboard</h1>
+        <div class="cards">
+          <div class="card">
+            <div class="card-label">Peer ID</div>
+            <div class="card-value mono" id="card-peer-id">—</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Connected Peers</div>
+            <div class="card-value" id="card-peer-count">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Stored Blocks</div>
+            <div class="card-value" id="card-blocks">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Cached Items</div>
+            <div class="card-value" id="card-cached">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Protocol</div>
+            <div class="card-value mono">/triple-hash/1.0.0</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Add File -->
+      <section id="page-add" class="page">
+        <h1>Add File</h1>
+        <p class="hint">Select a file or drag and drop. The system will compute CID&#185;, CID&#178;, CID&#179; and publish CID&#179; to the DHT.</p>
+        <div id="drop-zone" class="drop-zone">
+          <div class="drop-zone-inner">
+            <div class="drop-icon">&#8681;</div>
+            <div class="drop-text">Drop a file here</div>
+            <div class="drop-or">or</div>
+          </div>
+        </div>
+        <div class="form-row">
+          <input type="text" id="add-path" placeholder="File path&#8230;" readonly />
+          <button id="btn-browse">Browse</button>
+        </div>
+        <button id="btn-add" class="primary" disabled>Add to IPFS</button>
+        <div id="add-result" class="result-box hidden">
+          <div class="result-note">Use CID&#185; to retrieve this file. Do not share CID&#178; with anyone.</div>
+          <div class="cid-row">
+            <span class="label">CID&#185; (private &#8212; use this to retrieve):</span>
+            <span class="mono" id="res-cid1">&#8212;</span>
+            <button class="btn-copy" data-target="res-cid1">Copy</button>
+          </div>
+          <div class="cid-row">
+            <span class="label">CID&#178; (secret &#8212; never share):</span>
+            <span class="mono" id="res-cid2">&#8212;</span>
+            <button class="btn-copy" data-target="res-cid2">Copy</button>
+          </div>
+          <div class="cid-row">
+            <span class="label">CID&#179; (public &#8212; published to DHT):</span>
+            <span class="mono" id="res-cid3">&#8212;</span>
+            <button class="btn-copy" data-target="res-cid3">Copy</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Get File -->
+      <section id="page-get" class="page">
+        <h1>Get File</h1>
+        <p class="hint">Enter CID&#185; (shared privately by the owner). The system uses it to locate
+           and authenticate the owner via the 4-step Enhanced Privacy Protocol.</p>
+
+        <div class="form-row">
+          <input type="text" id="get-cid" placeholder="CID&#185; &#8230;" />
+          <button id="btn-get" class="primary">Retrieve</button>
+        </div>
+        <div id="get-error" class="form-error"></div>
+
+        <!-- CID display -->
+        <div id="cid-derivation" class="result-box hidden">
+          <div class="cid-row">
+            <span class="label">CID&#185; (H(OBJ)) &#8212; used for retrieval:</span>
+            <span class="mono" id="get-cid1-display">&#8212;</span>
+            <button class="btn-copy" data-target="get-cid1-display">Copy</button>
+          </div>
+        </div>
+
+        <!-- Protocol stepper -->
+        <div id="protocol-stepper" class="stepper hidden">
+          <div class="stepper-peer" id="stepper-peer"></div>
+          <div class="stepper-steps">
+            <div class="step" id="step-1" data-step="1">
+              <div class="step-indicator">
+                <div class="step-number">1</div>
+                <div class="step-line"></div>
+              </div>
+              <div class="step-content">
+                <div class="step-title">WANT_HAVE(CID&#179;)</div>
+                <div class="step-desc">A sends WANT_HAVE using CID&#179; to locate owner B</div>
+              </div>
+            </div>
+            <div class="step" id="step-2" data-step="2">
+              <div class="step-indicator">
+                <div class="step-number">2</div>
+                <div class="step-line"></div>
+              </div>
+              <div class="step-content">
+                <div class="step-title">PRIVACY_CHALLENGE</div>
+                <div class="step-desc">B proves ownership by signing CID&#178; &#8212; sig(H(H(OBJ)))</div>
+              </div>
+            </div>
+            <div class="step" id="step-3" data-step="3">
+              <div class="step-indicator">
+                <div class="step-number">3</div>
+                <div class="step-line"></div>
+              </div>
+              <div class="step-content">
+                <div class="step-title">PRIVACY_RESPONSE</div>
+                <div class="step-desc">A encrypts CID&#185; + session key K with B's public key (ECIES)</div>
+              </div>
+            </div>
+            <div class="step" id="step-4" data-step="4">
+              <div class="step-indicator">
+                <div class="step-number">4</div>
+                <div class="step-line"></div>
+              </div>
+              <div class="step-content">
+                <div class="step-title">PRIVACY_BLOCK</div>
+                <div class="step-desc">B sends AES<sub>K</sub>(OBJ), A decrypts and verifies H(OBJ) = CID&#185;</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Result -->
+        <div id="get-result" class="result-box hidden">
+          <div><span class="label">Saved to:</span> <span class="mono" id="res-path">&#8212;</span></div>
+          <div><span class="label">Verified:</span> <span id="res-verified">&#8212;</span></div>
+        </div>
+      </section>
+
+      <!-- Peers -->
+      <section id="page-peers" class="page">
+        <h1>Connected Peers</h1>
+        <p class="hint">Connect to a remote IPFS node or refresh to see known peers from the DHT routing table.</p>
+        <div class="form-row">
+          <input type="text" id="connect-ip" placeholder="IP address (e.g. 127.0.0.1)" />
+          <input type="text" id="connect-port" placeholder="Port" style="max-width:100px" />
+          <button id="btn-connect-peer" class="primary">Connect</button>
+          <button id="btn-refresh-peers">Refresh</button>
+        </div>
+        <div id="connect-error" class="form-error"></div>
+        <table id="peer-table">
+          <thead><tr><th>Peer ID</th><th>Address</th><th>Protocol</th><th>Source</th><th>Action</th></tr></thead>
+          <tbody id="peer-tbody"></tbody>
+        </table>
+      </section>
+
+      <!-- Cache -->
+      <section id="page-cache" class="page">
+        <h1>Encrypted Cache</h1>
+        <p class="hint">Cache files from connected peers. Cached objects are stored encrypted &#8212; this node never learns CID&#185;.</p>
+
+        <h2>Cache from Peer</h2>
+        <div class="form-row">
+          <input type="text" id="cache-cid3" placeholder="CID&#179; (public CID from DHT)&#8230;" />
+          <select id="cache-peer-select">
+            <option value="">Select peer&#8230;</option>
+          </select>
+          <button id="btn-cache" class="primary">Cache</button>
+        </div>
+        <div id="cache-error" class="form-error"></div>
+        <div id="cache-result" class="result-box hidden">
+          <div class="result-note">Cached successfully! This node can now serve this content to other peers.</div>
+        </div>
+
+        <h2>Cached Items</h2>
+        <button id="btn-refresh-cache">Refresh</button>
+        <table id="cache-table">
+          <thead><tr><th>CID&#179;</th><th>Cached At</th><th>Action</th></tr></thead>
+          <tbody id="cache-tbody"></tbody>
+        </table>
+      </section>
+
+      <!-- Event Log -->
+      <section id="page-log" class="page">
+        <h1>Event Log</h1>
+        <div id="log-container">
+          <pre id="log-output"></pre>
+        </div>
+        <button id="btn-clear-log">Clear</button>
+      </section>
+
+      <!-- Settings -->
+      <section id="page-settings" class="page">
+        <h1>Settings</h1>
+        <div class="settings-group">
+          <h2>Node</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Listen Port</div>
+              <div class="setting-desc">TCP port for incoming connections. 0 = auto-assign.</div>
+            </div>
+            <input type="number" id="setting-port" class="setting-input" value="0" min="0" max="65535" />
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Announce IP</div>
+              <div class="setting-desc">IP address announced to the DHT for peer discovery.</div>
+            </div>
+            <input type="text" id="setting-announce-ip" class="setting-input" value="127.0.0.1" />
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Data Directory</div>
+              <div class="setting-desc">Where blocks are stored on disk.</div>
+            </div>
+            <input type="text" id="setting-data-dir" class="setting-input wide" readonly />
+          </div>
+        </div>
+        <div class="settings-group">
+          <h2>Privacy</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Decoy Requests</div>
+              <div class="setting-desc">Send decoy requests to prevent traffic analysis linking CID&#179; to CID&#185;.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="setting-decoys" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Test Decoy</div>
+              <div class="setting-desc">Manually send a single decoy request to a random peer. Check the Event Log to see the result.</div>
+            </div>
+            <button id="btn-send-decoy">Send Decoy</button>
+          </div>
+        </div>
+        <div class="settings-group">
+          <h2>Downloads</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">Save Location</div>
+              <div class="setting-desc">Where retrieved files are saved.</div>
+            </div>
+            <input type="text" id="setting-download-dir" class="setting-input wide" readonly />
+          </div>
+        </div>
+        <div class="settings-note">Settings apply on next node start. Restart the node to apply changes.</div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+services:
+  owner:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      - ROLE=owner
+      - PORT=4001
+      - ANNOUNCE_IP=owner
+    ports:
+      - "4001:4001"
+    volumes:
+      - shared:/shared
+
+  cache:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      - ROLE=cache
+      - PORT=4002
+      - ANNOUNCE_IP=cache
+      - OWNER_HOST=owner
+      - OWNER_PORT=4001
+    ports:
+      - "4002:4002"
+    volumes:
+      - shared:/shared
+    depends_on:
+      - owner
+
+  requester:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      - ROLE=requester
+      - PORT=4003
+      - ANNOUNCE_IP=requester
+      - CACHE_HOST=cache
+      - CACHE_PORT=4002
+    ports:
+      - "4003:4003"
+    volumes:
+      - shared:/shared
+    depends_on:
+      - cache
+
+volumes:
+  shared:

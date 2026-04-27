@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPFS Network Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0d1117;
+    --bg2:     #161b22;
+    --bg3:     #21262d;
+    --border:  #30363d;
+    --text:    #e6edf3;
+    --dim:     #8b949e;
+    --blue:    #58a6ff;
+    --green:   #3fb950;
+    --yellow:  #d29922;
+    --red:     #f85149;
+    --purple:  #bc8cff;
+    --cyan:    #39d353;
+    --orange:  #ffa657;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--blue);
+    white-space: nowrap;
+  }
+  header .connect-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 300px;
+  }
+  header input {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 5px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    width: 180px;
+    outline: none;
+  }
+  header input:focus { border-color: var(--blue); }
+  .btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 5px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color .15s, background .15s;
+  }
+  .btn:hover { border-color: var(--blue); background: #1c2128; }
+  .btn.primary { background: #1f6feb; border-color: #388bfd; color: #fff; }
+  .btn.primary:hover { background: #388bfd; }
+  .btn.danger  { border-color: var(--red); color: var(--red); }
+  .btn.danger:hover { background: #2d1218; }
+  .btn.small { padding: 3px 8px; font-size: 11px; }
+
+  /* ── Main layout ── */
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+
+  /* ── Node cards ── */
+  #cards-section {
+    border-bottom: 1px solid var(--border);
+    padding: 16px 20px;
+    overflow-x: auto;
+  }
+  #cards-section h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--dim);
+    margin-bottom: 12px;
+  }
+  #cards {
+    display: flex;
+    gap: 12px;
+    min-height: 120px;
+  }
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    min-width: 240px;
+    max-width: 280px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .card.online  { border-top: 2px solid var(--green); }
+  .card.offline { border-top: 2px solid var(--red); opacity: .6; }
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .card-name {
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .card-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+  .card.offline .card-dot { background: var(--red); }
+  .card-api {
+    color: var(--dim);
+    font-size: 11px;
+    margin-bottom: 8px;
+  }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 8px;
+    margin-bottom: 12px;
+  }
+  .stat { display: flex; flex-direction: column; }
+  .stat-label { font-size: 10px; color: var(--dim); text-transform: uppercase; }
+  .stat-val   { font-size: 13px; color: var(--cyan); font-weight: 600; }
+  .card-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .card-peerid {
+    font-size: 10px;
+    color: var(--dim);
+    margin-top: 8px;
+    word-break: break-all;
+  }
+  #no-nodes {
+    color: var(--dim);
+    font-size: 12px;
+    align-self: center;
+    padding: 20px 0;
+  }
+
+  /* ── Middle: graph + log ── */
+  #middle {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* ── Network graph ── */
+  #graph-section {
+    width: 320px;
+    min-width: 260px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #graph-section h2, #log-section h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--dim);
+    padding: 10px 16px 6px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #graph-svg-wrap {
+    flex: 1;
+    padding: 12px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #graph-svg {
+    width: 100%;
+    height: 100%;
+    max-height: 260px;
+  }
+
+  /* ── Protocol log ── */
+  #log-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+  }
+  #log-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  #log-toolbar span {
+    font-size: 11px;
+    color: var(--dim);
+  }
+  #filter-layer {
+    display: flex;
+    gap: 4px;
+  }
+  .filter-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    font-family: inherit;
+  }
+  .filter-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+  #log-entries {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  .log-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 2px 14px;
+    font-size: 12px;
+    line-height: 1.4;
+    border-left: 2px solid transparent;
+  }
+  .log-entry:hover { background: var(--bg2); }
+  .log-entry.bitswap { border-left-color: var(--blue); }
+  .log-entry.dht     { border-left-color: var(--green); }
+  .log-entry.conn    { border-left-color: var(--yellow); }
+  .log-badge {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+  .log-layer {
+    font-size: 10px;
+    color: var(--dim);
+    flex-shrink: 0;
+    width: 46px;
+  }
+  .log-type { color: var(--blue); font-weight: 600; min-width: 140px; }
+  .log-detail { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-ts { color: var(--dim); font-size: 10px; margin-left: auto; flex-shrink: 0; }
+  #log-empty {
+    padding: 20px 14px;
+    color: var(--dim);
+    font-size: 12px;
+  }
+
+  /* ── Modals ── */
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  .modal {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    min-width: 360px;
+    max-width: 480px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .modal h3 {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .modal label {
+    font-size: 11px;
+    color: var(--dim);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .modal input, .modal textarea {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 7px 10px;
+    font-family: inherit;
+    font-size: 12px;
+    width: 100%;
+    outline: none;
+    resize: vertical;
+  }
+  .modal input:focus, .modal textarea:focus { border-color: var(--blue); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-result {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 11px;
+    line-height: 1.7;
+    word-break: break-all;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .modal-result .lbl { color: var(--dim); }
+  .modal-result .val { color: var(--cyan); }
+  .modal-result .secret { color: var(--purple); }
+  .modal-result .cmd { color: var(--yellow); user-select: all; }
+  .modal-result .err { color: var(--red); }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⬡ IPFS Network Dashboard</h1>
+  <div class="connect-row">
+    <input id="node-url-input" type="text" placeholder="localhost:4102" value="localhost:4102">
+    <button class="btn primary" onclick="addNode()">Connect Node</button>
+    <button class="btn small" onclick="clearLog()" title="Clear protocol log">Clear log</button>
+  </div>
+</header>
+
+<main>
+  <!-- Node cards -->
+  <section id="cards-section">
+    <h2>Connected Nodes</h2>
+    <div id="cards">
+      <div id="no-nodes">No nodes connected — type an API address above and click Connect Node.</div>
+    </div>
+  </section>
+
+  <!-- Graph + log -->
+  <div id="middle">
+    <section id="graph-section">
+      <h2>Network Graph</h2>
+      <div id="graph-svg-wrap">
+        <svg id="graph-svg" viewBox="0 0 260 220"></svg>
+      </div>
+    </section>
+
+    <section id="log-section">
+      <h2>Protocol Log</h2>
+      <div id="log-toolbar">
+        <span>Filter:</span>
+        <div id="filter-layer">
+          <button class="filter-btn active" data-layer="all"     onclick="setFilter('all')">All</button>
+          <button class="filter-btn"        data-layer="bitswap" onclick="setFilter('bitswap')">Bitswap</button>
+          <button class="filter-btn"        data-layer="dht"     onclick="setFilter('dht')">DHT</button>
+          <button class="filter-btn"        data-layer="conn"    onclick="setFilter('conn')">Connections</button>
+        </div>
+      </div>
+      <div id="log-entries">
+        <div id="log-empty" style="display:none">No protocol messages yet.</div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<!-- Peer modal -->
+<div id="modal-peer" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <h3>Connect to Peer</h3>
+    <label>
+      Peer address (ip:port — the node's TCP port, not API port)
+      <input type="text" id="peer-addr-input" placeholder="127.0.0.1:4003">
+    </label>
+    <div id="peer-result" class="modal-result" style="display:none"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-peer')">Close</button>
+      <button class="btn primary" onclick="doPeer()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add file modal -->
+<div id="modal-add" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <h3>Add File</h3>
+    <label>
+      Upload file
+      <input type="file" id="add-file-input">
+    </label>
+    <label>
+      — or paste text content —
+      <textarea id="add-text-input" rows="4" placeholder="Hello, IPFS!"></textarea>
+    </label>
+    <label>
+      Filename (optional)
+      <input type="text" id="add-name-input" placeholder="file.txt">
+    </label>
+    <div id="add-result" class="modal-result" style="display:none"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-add')">Close</button>
+      <button class="btn primary" onclick="doAdd()">Add to node</button>
+    </div>
+  </div>
+</div>
+
+<!-- Get file modal -->
+<div id="modal-get" class="modal-backdrop" style="display:none">
+  <div class="modal">
+    <h3>Get File</h3>
+    <label>
+      CID³ (public search key)
+      <input type="text" id="get-cid3-input" placeholder="bafkrei…">
+    </label>
+    <label>
+      h1 hex (32-byte content digest)
+      <input type="text" id="get-h1-input" placeholder="a3f9cc…">
+    </label>
+    <div id="get-result" class="modal-result" style="display:none"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-get')">Close</button>
+      <button class="btn primary" onclick="doGet()">Retrieve</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+
+const nodes   = new Map();   // apiBase → { name, color, es, stats, lastSeen }
+const logBuf  = [];
+const MAX_LOG = 300;
+let   activeFilter = 'all';
+let   modalNode    = null;   // apiBase of the node the open modal targets
+
+// Palette for node badge colours
+const PALETTE = [
+  '#58a6ff','#3fb950','#d29922','#bc8cff','#ffa657','#39d353','#f85149'
+];
+let palIdx = 0;
+
+function nextColor() { return PALETTE[palIdx++ % PALETTE.length]; }
+
+// ── Add node ──────────────────────────────────────────────────────────────────
+
+function addNode() {
+  let raw = document.getElementById('node-url-input').value.trim();
+  if (!raw) return;
+  if (!raw.startsWith('http')) raw = 'http://' + raw;
+  // Normalise trailing slash
+  const apiBase = raw.replace(/\/$/, '');
+  if (nodes.has(apiBase)) {
+    alert('Already connected to ' + apiBase);
+    return;
+  }
+
+  const color = nextColor();
+  const entry = { name: apiBase, color, es: null, stats: null, lastSeen: 0 };
+  nodes.set(apiBase, entry);
+
+  // Try fetching /info first to get the name
+  fetch(apiBase + '/info')
+    .then(r => r.json())
+    .then(info => {
+      entry.name = info.name || apiBase;
+      entry.stats = info;
+      entry.lastSeen = Date.now();
+      renderCards();
+      updateGraph();
+    })
+    .catch(() => { entry.name = apiBase; renderCards(); });
+
+  // Open SSE stream
+  const es = new EventSource(apiBase + '/events');
+  entry.es = es;
+
+  es.onmessage = evt => {
+    try {
+      const { type, payload } = JSON.parse(evt.data);
+      if (type === 'stats') {
+        const prev = entry.stats;
+        entry.stats    = payload;
+        entry.name     = payload.name || entry.name;
+        entry.lastSeen = Date.now();
+        // Update card in-place (renderCards patches data-k values)
+        patchCard(apiBase, entry);
+        // Only redraw graph if connection count changed
+        if (!prev || prev.connections !== payload.connections) updateGraph();
+      } else if (type === 'msg') {
+        appendLog({ ...payload, source: entry.name, sourceColor: entry.color });
+      } else if (type === 'connection') {
+        appendLog({
+          layer: 'conn', type: payload.event,
+          from: payload.from, to: payload.to,
+          source: entry.name, sourceColor: entry.color,
+        });
+        setTimeout(updateGraph, 500);
+      }
+    } catch {}
+  };
+
+  es.onerror = () => {
+    entry.lastSeen = 0;
+    renderCards();
+  };
+
+  renderCards();
+}
+
+// ── Remove node ───────────────────────────────────────────────────────────────
+
+function removeNode(apiBase) {
+  const entry = nodes.get(apiBase);
+  if (entry?.es) entry.es.close();
+  nodes.delete(apiBase);
+  renderCards();
+  updateGraph();
+}
+
+// ── Render cards ──────────────────────────────────────────────────────────────
+// Build cards once; subsequent calls only patch the live stat values and online dot.
+
+function renderCards() {
+  const wrap = document.getElementById('cards');
+
+  // First pass: remove cards for nodes that no longer exist
+  wrap.querySelectorAll('.card[data-api]').forEach(el => {
+    if (!nodes.has(el.dataset.api)) el.remove();
+  });
+
+  if (nodes.size === 0) {
+    if (!wrap.querySelector('#no-nodes'))
+      wrap.innerHTML = '<div id="no-nodes">No nodes connected — type an API address above and click Connect Node.</div>';
+    return;
+  }
+  const noNodes = wrap.querySelector('#no-nodes');
+  if (noNodes) noNodes.remove();
+
+  for (const [apiBase, entry] of nodes) {
+    const online = entry.lastSeen && (Date.now() - entry.lastSeen < 12000);
+    const s      = entry.stats || {};
+
+    let card = wrap.querySelector(`.card[data-api="${CSS.escape(apiBase)}"]`);
+    if (!card) {
+      // Build card skeleton once
+      card = document.createElement('div');
+      card.className   = 'card ' + (online ? 'online' : 'offline');
+      card.dataset.api = apiBase;
+      card.innerHTML = `
+        <div class="card-header">
+          <span class="card-name" style="color:${entry.color}">${esc(entry.name)}</span>
+          <span class="card-dot"></span>
+        </div>
+        <div class="card-api">${esc(apiBase)}</div>
+        <div class="stat-grid">
+          <div class="stat"><span class="stat-label">Blocks</span>   <span class="stat-val" data-k="blocks">—</span></div>
+          <div class="stat"><span class="stat-label">Peers</span>    <span class="stat-val" data-k="connections">—</span></div>
+          <div class="stat"><span class="stat-label">DHT peers</span><span class="stat-val" data-k="dhtPeers">—</span></div>
+          <div class="stat"><span class="stat-label">Providers</span><span class="stat-val" data-k="dhtProviders">—</span></div>
+        </div>
+        <div class="card-actions">
+          <button class="btn small" onclick="openAdd('${apiBase}')">Add file</button>
+          <button class="btn small" onclick="openGet('${apiBase}')">Get file</button>
+          <button class="btn small" onclick="openPeer('${apiBase}')">Peer</button>
+          <button class="btn small danger" onclick="removeNode('${apiBase}')">✕</button>
+        </div>
+        <div class="card-peerid"></div>
+      `;
+      wrap.appendChild(card);
+    }
+
+    // Patch live values without rebuilding DOM
+    card.className = 'card ' + (online ? 'online' : 'offline');
+    card.querySelectorAll('[data-k]').forEach(el => {
+      const v = s[el.dataset.k];
+      el.textContent = v != null ? v : '—';
+    });
+    const pidEl = card.querySelector('.card-peerid');
+    if (pidEl && s.peerId) pidEl.textContent = s.peerId;
+  }
+}
+
+// ── Network graph ─────────────────────────────────────────────────────────────
+
+async function updateGraph() {
+  const svg    = document.getElementById('graph-svg');
+  const W = 260, H = 220;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = '';
+
+  const list  = [...nodes.values()];
+  if (list.length === 0) return;
+
+  // Fetch /peers for each node (quick poll)
+  const peerMap = new Map();
+  await Promise.all([...nodes.entries()].map(async ([apiBase, entry]) => {
+    try {
+      const r = await fetch(apiBase + '/peers');
+      const j = await r.json();
+      peerMap.set(entry.name, new Set(j.peers || []));
+    } catch {
+      peerMap.set(entry.name, new Set());
+    }
+  }));
+
+  // Position nodes in a circle
+  const cx = W / 2, cy = H / 2, r = Math.min(W, H) * 0.32;
+  const pos = list.map((n, i) => {
+    const angle = (2 * Math.PI * i / list.length) - Math.PI / 2;
+    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle), entry: n };
+  });
+
+  // Draw edges — connect nodes whose peer sets intersect by peer ID
+  const peerIdToPos = new Map();
+  for (const p of pos) {
+    if (p.entry.stats?.peerId) peerIdToPos.set(p.entry.stats.peerId, p);
+  }
+
+  const drawn = new Set();
+  for (const pa of pos) {
+    const peers = peerMap.get(pa.entry.name);
+    if (!peers) continue;
+    for (const peerId of peers) {
+      const pb = peerIdToPos.get(peerId);
+      if (!pb) continue;
+      const key = [pa.entry.name, pb.entry.name].sort().join('|');
+      if (drawn.has(key)) continue;
+      drawn.add(key);
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', pa.x); line.setAttribute('y1', pa.y);
+      line.setAttribute('x2', pb.x); line.setAttribute('y2', pb.y);
+      line.setAttribute('stroke', '#30363d');
+      line.setAttribute('stroke-width', '1.5');
+      svg.appendChild(line);
+    }
+  }
+
+  // Draw nodes
+  for (const { x, y, entry } of pos) {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', `translate(${x},${y})`);
+
+    const online = entry.lastSeen && (Date.now() - entry.lastSeen < 5000);
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('r', '18');
+    circle.setAttribute('fill', '#161b22');
+    circle.setAttribute('stroke', online ? entry.color : '#f85149');
+    circle.setAttribute('stroke-width', '2');
+    g.appendChild(circle);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.setAttribute('fill', entry.color);
+    text.setAttribute('font-size', '10');
+    text.setAttribute('font-family', 'ui-monospace, monospace');
+    text.setAttribute('font-weight', '600');
+    text.textContent = (entry.name || '').slice(0, 5);
+    g.appendChild(text);
+
+    // Peer count badge
+    const pc = entry.stats?.connections ?? 0;
+    if (pc > 0) {
+      const badge = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      badge.setAttribute('x', '14'); badge.setAttribute('y', '-14');
+      badge.setAttribute('text-anchor', 'middle');
+      badge.setAttribute('fill', '#3fb950');
+      badge.setAttribute('font-size', '9');
+      badge.setAttribute('font-family', 'ui-monospace, monospace');
+      badge.textContent = pc + 'p';
+      g.appendChild(badge);
+    }
+
+    svg.appendChild(g);
+  }
+}
+
+// ── Protocol log ──────────────────────────────────────────────────────────────
+
+function appendLog(msg) {
+  logBuf.unshift({ ...msg, ts: Date.now() });
+  if (logBuf.length > MAX_LOG) logBuf.length = MAX_LOG;
+  renderLog();
+}
+
+function clearLog() {
+  logBuf.length = 0;
+  renderLog();
+}
+
+function setFilter(layer) {
+  activeFilter = layer;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.layer === layer);
+  });
+  renderLog();
+}
+
+function renderLog() {
+  const wrap = document.getElementById('log-entries');
+  const filtered = activeFilter === 'all'
+    ? logBuf
+    : logBuf.filter(m => m.layer === activeFilter);
+
+  if (filtered.length === 0) {
+    wrap.innerHTML = '<div id="log-empty">No protocol messages yet.</div>';
+    return;
+  }
+
+  const layerClass = { bitswap: 'bitswap', dht: 'dht', conn: 'conn' };
+  const html = filtered.map(m => {
+    const cls   = layerClass[m.layer] || '';
+    const ts    = new Date(m.ts).toLocaleTimeString('en-GB', { hour12: false });
+    const badge = `<span class="log-badge" style="background:${m.sourceColor || '#58a6ff'}22;color:${m.sourceColor || '#58a6ff'}">${esc(m.source || '')}</span>`;
+    const layer = `<span class="log-layer">${esc(m.layer || '')}</span>`;
+    const type  = `<span class="log-type">${esc(m.type || '')}</span>`;
+    let   detail = '';
+    if (m.cid)          detail += esc(m.cid) + ' ';
+    if (m.from && m.to) detail += `${esc(m.from)} → ${esc(m.to)} `;
+    if (m.payloadBytes) detail += `${m.payloadBytes}B`;
+    return `<div class="log-entry ${cls}">${badge}${layer}${type}<span class="log-detail">${detail.trim()}</span><span class="log-ts">${ts}</span></div>`;
+  }).join('');
+
+  wrap.innerHTML = html;
+}
+
+// ── Peer modal ────────────────────────────────────────────────────────────────
+
+function openPeer(apiBase) {
+  modalNode = apiBase;
+  // Pre-fill with other known node addresses
+  const others = [...nodes.entries()]
+    .filter(([k]) => k !== apiBase)
+    .map(([k, v]) => {
+      // Extract host:port from apiBase, then add 100 to get the node port
+      const m = k.match(/:(\d+)$/);
+      const nodePort = m ? parseInt(m[1]) - 100 : null;
+      const host = k.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+      return nodePort ? `${host}:${nodePort}` : null;
+    })
+    .filter(Boolean);
+  document.getElementById('peer-addr-input').value = others[0] || '';
+  document.getElementById('peer-result').style.display = 'none';
+  document.getElementById('modal-peer').style.display  = 'flex';
+}
+
+async function doPeer() {
+  if (!modalNode) return;
+  const addr = document.getElementById('peer-addr-input').value.trim();
+  const resultDiv = document.getElementById('peer-result');
+  if (!addr) { alert('Enter an ip:port address.'); return; }
+  const [ip, portStr] = addr.split(':');
+  const port = parseInt(portStr, 10);
+  if (!ip || isNaN(port)) { alert('Use format ip:port'); return; }
+
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<span class="lbl">Connecting…</span>';
+  try {
+    const r = await fetch(modalNode + '/connect', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ ip, port }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    resultDiv.innerHTML = `<span style="color:var(--green)">✓ Connected to ${esc(addr)}</span>`;
+    setTimeout(updateGraph, 600);
+  } catch (err) {
+    resultDiv.innerHTML = `<span class="err">✗ ${esc(err.message)}</span>`;
+  }
+}
+
+// ── Patch a single card's live values ────────────────────────────────────────
+
+function patchCard(apiBase, entry) {
+  const wrap = document.getElementById('cards');
+  const card = wrap.querySelector(`.card[data-api="${CSS.escape(apiBase)}"]`);
+  if (!card) { renderCards(); return; }   // card not yet built — do a full render
+
+  const online = entry.lastSeen && (Date.now() - entry.lastSeen < 12000);
+  card.className = 'card ' + (online ? 'online' : 'offline');
+
+  const s = entry.stats || {};
+  card.querySelectorAll('[data-k]').forEach(el => {
+    const v = s[el.dataset.k];
+    el.textContent = v != null ? v : '—';
+  });
+  const pidEl = card.querySelector('.card-peerid');
+  if (pidEl && s.peerId && !pidEl.textContent) pidEl.textContent = s.peerId;
+}
+
+function openAdd(apiBase) {
+  modalNode = apiBase;
+  document.getElementById('add-file-input').value = '';
+  document.getElementById('add-text-input').value = '';
+  document.getElementById('add-name-input').value = '';
+  document.getElementById('add-result').style.display = 'none';
+  document.getElementById('modal-add').style.display  = 'flex';
+}
+
+function openGet(apiBase) {
+  modalNode = apiBase;
+  document.getElementById('get-cid3-input').value = '';
+  document.getElementById('get-h1-input').value   = '';
+  document.getElementById('get-result').style.display = 'none';
+  document.getElementById('modal-get').style.display  = 'flex';
+}
+
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+async function doAdd() {
+  if (!modalNode) return;
+  const fileInput = document.getElementById('add-file-input');
+  const textInput = document.getElementById('add-text-input');
+  const nameInput = document.getElementById('add-name-input');
+  const resultDiv = document.getElementById('add-result');
+
+  let bytes, name;
+
+  if (fileInput.files.length > 0) {
+    const file = fileInput.files[0];
+    name       = nameInput.value || file.name || 'file';
+    bytes      = new Uint8Array(await file.arrayBuffer());
+  } else {
+    const text = textInput.value;
+    if (!text) { alert('Provide a file or paste some text.'); return; }
+    name  = nameInput.value || 'file.txt';
+    bytes = new TextEncoder().encode(text);
+  }
+
+  // base64 encode
+  let binary = '';
+  bytes.forEach(b => binary += String.fromCharCode(b));
+  const b64 = btoa(binary);
+
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<span class="lbl">Adding…</span>';
+
+  try {
+    const r = await fetch(modalNode + '/add', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ content: b64, name }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+    resultDiv.innerHTML = `
+      <div><span class="lbl">CID¹  </span><span class="val">${esc(j.cid1)}</span></div>
+      <div><span class="lbl">CID²  </span><span class="secret">${esc(j.cid2)}</span> <span class="lbl">(secret — never share)</span></div>
+      <div><span class="lbl">CID³  </span><span class="val">${esc(j.cid3)}</span></div>
+      <div><span class="lbl">h1hex </span><span class="val">${esc(j.h1hex)}</span></div>
+      <div style="margin-top:8px"><span class="lbl">Get command → </span><span class="cmd">get ${esc(j.cid3)} ${esc(j.h1hex)}</span></div>
+    `;
+  } catch (err) {
+    resultDiv.innerHTML = `<span class="err">Error: ${esc(err.message)}</span>`;
+  }
+}
+
+async function doGet() {
+  if (!modalNode) return;
+  const cid3    = document.getElementById('get-cid3-input').value.trim();
+  const h1hex   = document.getElementById('get-h1-input').value.trim();
+  const resultDiv = document.getElementById('get-result');
+
+  if (!cid3 || !h1hex) { alert('Fill in both CID³ and h1hex.'); return; }
+
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<span class="lbl">Retrieving…</span>';
+
+  try {
+    const r = await fetch(modalNode + '/get', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ cid3, h1hex }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error);
+
+    // Decode base64 → bytes
+    const binary = atob(j.data);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+    // Try to show as text; offer download
+    let preview = '';
+    try {
+      const txt = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      preview = `<pre style="max-height:80px;overflow-y:auto;margin-top:6px;color:var(--text)">${esc(txt.slice(0, 500))}${txt.length > 500 ? '\n…' : ''}</pre>`;
+    } catch {}
+
+    const blob = new Blob([bytes]);
+    const url  = URL.createObjectURL(blob);
+    const fname = cid3.slice(0, 20);
+
+    resultDiv.innerHTML = `
+      <div><span class="lbl">Received </span><span class="val">${j.bytes} bytes</span></div>
+      ${preview}
+      <div style="margin-top:8px">
+        <a href="${url}" download="${fname}" style="color:var(--blue)">⬇ Download</a>
+      </div>
+    `;
+  } catch (err) {
+    resultDiv.innerHTML = `<span class="err">Error: ${esc(err.message)}</span>`;
+  }
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// Close modal on backdrop click
+document.querySelectorAll('.modal-backdrop').forEach(bd => {
+  bd.addEventListener('click', e => { if (e.target === bd) bd.style.display = 'none'; });
+});
+
+// Enter key in URL input triggers connect
+document.getElementById('node-url-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addNode();
+});
+
+// Refresh graph every 5 seconds
+setInterval(updateGraph, 5000);
+
+// Update online/offline dots every 3 seconds (non-rebuilding)
+setInterval(() => {
+  for (const [apiBase, entry] of nodes) patchCard(apiBase, entry);
+}, 3000);
+</script>
+</body>
+</html>

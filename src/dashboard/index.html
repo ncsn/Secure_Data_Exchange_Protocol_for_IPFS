@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPFS Privacy Node — Dashboard</title>
+<style>
+  /* ── Reset & base ─────────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --border:    #30363d;
+    --text:      #e6edf3;
+    --muted:     #8b949e;
+    --blue:      #58a6ff;
+    --green:     #3fb950;
+    --orange:    #d29922;
+    --purple:    #bc8cff;
+    --red:       #f85149;
+    --teal:      #39d353;
+    --node-idle: #1f6feb;
+    --node-act:  #f0883e;
+    --edge:      #388bfd44;
+    --edge-act:  #58a6ff;
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ───────────────────────────────────────────────────────────── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .3px; }
+  .badge-proto {
+    font-size: .7rem;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: #1f3b6a;
+    color: var(--blue);
+    font-weight: 600;
+    letter-spacing: .5px;
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--red);
+    transition: background .4s;
+  }
+  .status-dot.live { background: var(--green); }
+  #conn-status { font-size: .8rem; color: var(--muted); margin-left: auto; }
+
+  /* ── Main grid ────────────────────────────────────────────────────────── */
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    grid-template-rows: auto auto 1fr;
+    gap: 0;
+  }
+
+  /* ── Panel shared styles ─────────────────────────────────────────────── */
+  .panel {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-title {
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--muted);
+    padding: 10px 16px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── Network graph (left, row 1) ─────────────────────────────────────── */
+  #graph-panel {
+    grid-column: 1;
+    grid-row: 1;
+    background: var(--surface);
+  }
+  #graph-svg {
+    width: 100%;
+    height: 220px;
+    display: block;
+  }
+  .node-circle {
+    transition: fill .35s, filter .35s;
+    cursor: default;
+  }
+  .node-circle.active {
+    fill: var(--node-act) !important;
+    filter: drop-shadow(0 0 10px #f0883eaa);
+  }
+  .edge-line {
+    stroke: var(--edge);
+    stroke-width: 2.5;
+    transition: stroke .3s;
+  }
+  .edge-line.active { stroke: var(--edge-act); }
+  .node-label { font-size: 18px; font-weight: 700; fill: #fff; pointer-events: none; }
+  .node-sub   { font-size: 8px;  fill: #ffffffaa; pointer-events: none; }
+  .data-ball  { pointer-events: none; }
+
+  /* ── Stats panel (right, row 1) ──────────────────────────────────────── */
+  #stats-panel {
+    grid-column: 2;
+    grid-row: 1;
+    background: var(--surface);
+    border-right: none;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--border);
+    height: calc(100% - 33px);
+  }
+  .stat-card {
+    background: var(--surface);
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .stat-card h3 {
+    font-size: .75rem;
+    font-weight: 700;
+    color: var(--blue);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .stat-card h3 .node-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--node-idle);
+    transition: background .35s;
+    flex-shrink: 0;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .stat-key { font-size: .7rem; color: var(--muted); }
+  .stat-val {
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    transition: color .3s;
+  }
+  .stat-val.changed { color: var(--teal); }
+
+  /* ── Demo panel (left, row 2) ────────────────────────────────────────── */
+  #demo-panel {
+    grid-column: 1;
+    grid-row: 2;
+    background: var(--bg);
+    padding: 14px 16px;
+  }
+  .btn-row { display: flex; flex-direction: column; gap: 8px; }
+  .demo-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: .82rem;
+    cursor: pointer;
+    transition: background .2s, border-color .2s, opacity .2s;
+    text-align: left;
+  }
+  .demo-btn:hover:not(:disabled) { background: #21262d; border-color: var(--blue); }
+  .demo-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .step-num {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .7rem; font-weight: 700; flex-shrink: 0;
+  }
+  .step-1 { background: #1f3b6a; color: var(--blue); }
+  .step-2 { background: #1c3828; color: var(--green); }
+  .step-3 { background: #3b2a1a; color: var(--orange); }
+  .demo-btn .btn-main { font-weight: 600; }
+  .demo-btn .btn-sub  { font-size: .72rem; color: var(--muted); display: block; margin-top: 1px; }
+
+  #demo-status {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    background: var(--surface);
+    border-left: 3px solid var(--border);
+    font-size: .78rem;
+    color: var(--muted);
+    line-height: 1.5;
+    min-height: 60px;
+    transition: border-color .3s;
+  }
+  #demo-status.ok     { border-color: var(--green); color: var(--text); }
+  #demo-status.error  { border-color: var(--red);   color: var(--red);  }
+  #demo-status.busy   { border-color: var(--orange); }
+
+  /* ── CID display (row 2, right) ──────────────────────────────────────── */
+  #cid-panel {
+    grid-column: 2;
+    grid-row: 2;
+    background: var(--bg);
+    border-right: none;
+    padding: 14px 16px;
+  }
+  .cid-table { width: 100%; border-collapse: collapse; font-size: .75rem; }
+  .cid-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+  .cid-table td:first-child { color: var(--muted); width: 70px; }
+  .cid-val {
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: .72rem;
+    color: var(--text);
+    word-break: break-all;
+  }
+  .cid-val.secret { color: var(--purple); }
+  .cid-empty { color: var(--muted); font-style: italic; }
+
+  /* ── Log panel (bottom, full width) ─────────────────────────────────── */
+  #log-panel {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    background: var(--bg);
+    border-right: none;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #log-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  #log-toolbar .panel-title { padding: 0; border: none; }
+  .filter-btn {
+    font-size: .7rem;
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .filter-btn.on { background: var(--surface); color: var(--text); }
+  #log-count { margin-left: auto; font-size: .7rem; color: var(--muted); }
+  #clear-log { font-size: .7rem; color: var(--muted); background: none; border: none; cursor: pointer; }
+  #clear-log:hover { color: var(--text); }
+
+  #log {
+    overflow-y: auto;
+    flex: 1;
+    padding: 4px 0;
+    scroll-behavior: smooth;
+  }
+  .log-entry {
+    display: grid;
+    grid-template-columns: 56px 70px 68px 200px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 16px;
+    font-size: .72rem;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    border-bottom: 1px solid #ffffff08;
+    animation: fadeIn .25s ease;
+  }
+  .log-entry:hover { background: #ffffff06; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+  .log-badge {
+    font-size: .6rem; font-weight: 700; padding: 1px 5px;
+    border-radius: 3px; text-align: center; letter-spacing: .3px;
+  }
+  .log-badge.bitswap { background: #1f3b6a; color: var(--blue); }
+  .log-badge.dht     { background: #1c3828; color: var(--green); }
+
+  .log-route { color: var(--muted); }
+  .log-type  { font-weight: 600; }
+  .log-type.WANT_HAVE         { color: #79c0ff; }
+  .log-type.HAVE              { color: var(--green); }
+  .log-type.DONT_HAVE         { color: var(--red); }
+  .log-type.WANT_BLOCK        { color: #79c0ff; }
+  .log-type.BLOCK             { color: var(--green); }
+  .log-type.PRIVACY_CHALLENGE { color: var(--purple); }
+  .log-type.PRIVACY_RESPONSE  { color: var(--purple); }
+  .log-type.PRIVACY_BLOCK     { color: var(--teal); }
+  .log-type.DECOY_REQUEST     { color: var(--orange); }
+  .log-type.DECOY_BLOCK       { color: var(--orange); }
+  .log-type.ADD_PROVIDER      { color: var(--green); }
+  .log-type.GET_PROVIDERS     { color: #79c0ff; }
+  .log-type.GET_PROVIDERS_RESP{ color: #79c0ff; }
+  .log-type.FIND_NODE         { color: var(--muted); }
+  .log-type.FIND_NODE_RESP    { color: var(--muted); }
+  .log-type.PING              { color: #444d56; }
+  .log-type.PONG              { color: #444d56; }
+
+  .log-cid   { color: #444d56; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-bytes { color: #444d56; text-align: right; }
+  .log-ts    { color: #30363d; font-size: .65rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="status-dot" id="dot"></div>
+  <h1>IPFS Privacy Node</h1>
+  <span class="badge-proto">Triple-Hash Protocol</span>
+  <span id="conn-status">Connecting…</span>
+</header>
+
+<main>
+
+  <!-- Network graph -->
+  <div class="panel" id="graph-panel">
+    <div class="panel-title">Network Topology</div>
+    <svg id="graph-svg" viewBox="0 0 420 220">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z" fill="#388bfd88"/>
+        </marker>
+      </defs>
+      <!-- Edges -->
+      <line id="edge-AB" class="edge-line" x1="110" y1="110" x2="210" y2="110"/>
+      <line id="edge-BC" class="edge-line" x1="210" y1="110" x2="310" y2="110"/>
+      <line id="edge-AC" class="edge-line" x1="110" y1="110" x2="310" y2="110"
+            stroke-dasharray="5,5" opacity="0"/>
+      <!-- Node A -->
+      <g id="gnode-A">
+        <circle id="circle-A" class="node-circle" cx="110" cy="110" r="38"
+                fill="var(--node-idle)" stroke="#ffffff22" stroke-width="1.5"/>
+        <text class="node-label" x="110" y="116" text-anchor="middle">A</text>
+        <text class="node-sub"   x="110" y="130" text-anchor="middle" id="pid-A">—</text>
+      </g>
+      <!-- Node B -->
+      <g id="gnode-B">
+        <circle id="circle-B" class="node-circle" cx="210" cy="110" r="38"
+                fill="var(--node-idle)" stroke="#ffffff22" stroke-width="1.5"/>
+        <text class="node-label" x="210" y="116" text-anchor="middle">B</text>
+        <text class="node-sub"   x="210" y="130" text-anchor="middle" id="pid-B">—</text>
+      </g>
+      <!-- Node C -->
+      <g id="gnode-C">
+        <circle id="circle-C" class="node-circle" cx="310" cy="110" r="38"
+                fill="var(--node-idle)" stroke="#ffffff22" stroke-width="1.5"/>
+        <text class="node-label" x="310" y="116" text-anchor="middle">C</text>
+        <text class="node-sub"   x="310" y="130" text-anchor="middle" id="pid-C">—</text>
+      </g>
+      <!-- Legend -->
+      <text x="12" y="200" font-size="9" fill="#444d56">○ idle</text>
+      <circle cx="46" cy="196" r="5" fill="var(--node-act)"/>
+      <text x="55" y="200" font-size="9" fill="#444d56">active</text>
+      <line x1="90" y1="196" x2="106" y2="196" stroke="var(--edge-act)" stroke-width="2"/>
+      <text x="110" y="200" font-size="9" fill="#444d56">data flowing</text>
+    </svg>
+  </div>
+
+  <!-- Stats -->
+  <div class="panel" id="stats-panel">
+    <div class="panel-title">Node Statistics</div>
+    <div class="stats-grid">
+      <!-- Rendered per node: A, B, C -->
+    </div>
+  </div>
+
+  <!-- Demo controls -->
+  <div class="panel" id="demo-panel">
+    <div class="panel-title">Demo Controls</div>
+    <div style="padding:12px 14px;">
+      <div class="btn-row">
+        <button class="demo-btn" id="btn-add" onclick="runAction('add-to-a')">
+          <span class="step-num step-1">1</span>
+          <span>
+            <span class="btn-main">Add file to Node A</span>
+            <span class="btn-sub">Computes CID¹/²/³ · stores blocks · announces to DHT</span>
+          </span>
+        </button>
+        <button class="demo-btn" id="btn-get" onclick="runAction('retrieve-from-c')">
+          <span class="step-num step-2">2</span>
+          <span>
+            <span class="btn-main">Retrieve from Node C</span>
+            <span class="btn-sub">C queries DHT → finds A → 4-step privacy handshake</span>
+          </span>
+        </button>
+        <button class="demo-btn" id="btn-decoy" onclick="runAction('send-decoy')">
+          <span class="step-num step-3">3</span>
+          <span>
+            <span class="btn-main">Send decoy request</span>
+            <span class="btn-sub">Indistinguishable from real retrieval · A replies with random bits</span>
+          </span>
+        </button>
+      </div>
+      <div id="demo-status">Press <strong>Step 1</strong> to start the demo.</div>
+    </div>
+  </div>
+
+  <!-- CID display -->
+  <div class="panel" id="cid-panel">
+    <div class="panel-title">Last Added Content — Triple-Hash CIDs</div>
+    <div style="padding:10px 16px;">
+      <table class="cid-table">
+        <tr>
+          <td>CID¹</td>
+          <td><span class="cid-val cid-empty" id="cid1-val">—  (public, H(OBJ))</span></td>
+        </tr>
+        <tr>
+          <td>CID²</td>
+          <td><span class="cid-val secret cid-empty" id="cid2-val">—  (SECRET, H(H(OBJ)))</span></td>
+        </tr>
+        <tr>
+          <td>CID³</td>
+          <td><span class="cid-val cid-empty" id="cid3-val">—  (public, H(H(H(OBJ))))</span></td>
+        </tr>
+      </table>
+      <p style="margin-top:10px;font-size:.7rem;color:var(--muted);line-height:1.6">
+        CID² is <strong style="color:var(--purple)">never announced</strong> to the network.
+        Knowing CID¹ proves you own the content without revealing the object itself.
+      </p>
+    </div>
+  </div>
+
+  <!-- Protocol log -->
+  <div class="panel" id="log-panel">
+    <div id="log-toolbar">
+      <span class="panel-title">Protocol Message Log</span>
+      <button class="filter-btn on" id="filter-bitswap" onclick="toggleFilter('bitswap')">Bitswap</button>
+      <button class="filter-btn on" id="filter-dht"     onclick="toggleFilter('dht')">DHT</button>
+      <span id="log-count">0 messages</span>
+      <button id="clear-log" onclick="clearLog()">Clear</button>
+    </div>
+    <div id="log"></div>
+  </div>
+
+</main>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+
+const nodeLabels = ['A', 'B', 'C'];
+const nodePos    = { A: { x: 110, y: 110 }, B: { x: 210, y: 110 }, C: { x: 310, y: 110 } };
+let logCount     = 0;
+let filters      = { bitswap: true, dht: true };
+
+// ── Build stats grid ──────────────────────────────────────────────────────────
+
+(function buildStats() {
+  const grid = document.querySelector('.stats-grid');
+  for (const lbl of nodeLabels) {
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    card.innerHTML = `
+      <h3><span class="node-dot" id="dot-${lbl}"></span>Node ${lbl}</h3>
+      <div class="stat-row">
+        <span class="stat-key">Peer ID</span>
+        <span class="stat-val" id="stat-${lbl}-peerId" style="font-size:.68rem;font-family:monospace">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-key">Port</span>
+        <span class="stat-val" id="stat-${lbl}-port">—</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-key">Blocks</span>
+        <span class="stat-val" id="stat-${lbl}-blocks">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-key">Storage</span>
+        <span class="stat-val" id="stat-${lbl}-bytes">0 B</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-key">Connections</span>
+        <span class="stat-val" id="stat-${lbl}-conns">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-key">DHT peers</span>
+        <span class="stat-val" id="stat-${lbl}-dhtPeers">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-key">Providers</span>
+        <span class="stat-val" id="stat-${lbl}-dhtProviders">0</span>
+      </div>
+    `;
+    grid.appendChild(card);
+  }
+})();
+
+// ── SSE connection ────────────────────────────────────────────────────────────
+
+const es = new EventSource('/events');
+
+es.onopen = () => {
+  document.getElementById('dot').classList.add('live');
+  document.getElementById('conn-status').textContent = 'Live';
+};
+es.onerror = () => {
+  document.getElementById('dot').classList.remove('live');
+  document.getElementById('conn-status').textContent = 'Disconnected — refresh to reconnect';
+};
+
+es.onmessage = e => {
+  const { type, payload } = JSON.parse(e.data);
+  if (type === 'stats')      updateStats(payload);
+  if (type === 'msg')        handleMsg(payload);
+  if (type === 'connection') handleConnection(payload);
+  if (type === 'step')       handleStep(payload);
+};
+
+// ── Stats update ──────────────────────────────────────────────────────────────
+
+function fmt(n) {
+  if (n >= 1_048_576) return (n / 1_048_576).toFixed(1) + ' MB';
+  if (n >= 1024)      return (n / 1024).toFixed(1) + ' KB';
+  return n + ' B';
+}
+
+function setVal(id, val) {
+  const el = document.getElementById(id);
+  if (!el || el.textContent === String(val)) return;
+  el.textContent = val;
+  el.classList.add('changed');
+  setTimeout(() => el.classList.remove('changed'), 800);
+}
+
+function updateStats({ nodes }) {
+  for (const n of nodes) {
+    const lbl = n.label;
+    setVal(`stat-${lbl}-peerId`,        n.peerId || '—');
+    setVal(`stat-${lbl}-port`,          n.listenPort || '—');
+    setVal(`stat-${lbl}-blocks`,        n.blocks);
+    setVal(`stat-${lbl}-bytes`,         fmt(n.storageBytes));
+    setVal(`stat-${lbl}-conns`,         n.connections);
+    setVal(`stat-${lbl}-dhtPeers`,      n.dhtPeers);
+    setVal(`stat-${lbl}-dhtProviders`,  n.dhtProviders);
+    // Update peer ID in SVG
+    const pidEl = document.getElementById(`pid-${lbl}`);
+    if (pidEl && n.peerId) pidEl.textContent = n.peerId.slice(0, 10) + '…';
+    // Node dot colour
+    const dot = document.getElementById(`dot-${lbl}`);
+    if (dot) dot.style.background = n.connections > 0 ? 'var(--green)' : 'var(--node-idle)';
+  }
+}
+
+// ── Graph animations ──────────────────────────────────────────────────────────
+
+function flashNode(label, colour = 'var(--node-act)') {
+  const c = document.getElementById(`circle-${label}`);
+  if (!c) return;
+  c.style.fill = colour;
+  c.style.filter = `drop-shadow(0 0 12px ${colour}aa)`;
+  setTimeout(() => {
+    c.style.fill = '';
+    c.style.filter = '';
+  }, 700);
+}
+
+function animateBall(from, to, colour = '#58a6ff') {
+  const svg  = document.getElementById('graph-svg');
+  const pf   = nodePos[from];
+  const pt   = nodePos[to];
+  if (!pf || !pt) return;
+
+  const ball = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  ball.setAttribute('r', '6');
+  ball.setAttribute('fill', colour);
+  ball.setAttribute('opacity', '0.9');
+  ball.style.filter = `drop-shadow(0 0 5px ${colour})`;
+  svg.appendChild(ball);
+
+  const start  = performance.now();
+  const dur    = 500; // ms
+
+  function step(now) {
+    const t = Math.min((now - start) / dur, 1);
+    const x = pf.x + (pt.x - pf.x) * t;
+    const y = pf.y + (pt.y - pf.y) * t;
+    ball.setAttribute('cx', x);
+    ball.setAttribute('cy', y);
+    if (t < 1) requestAnimationFrame(step);
+    else        ball.remove();
+  }
+  requestAnimationFrame(step);
+}
+
+function flashEdge(from, to) {
+  const key = `edge-${[from,to].sort().join('')}`;
+  const el  = document.getElementById(key);
+  if (!el) return;
+  el.classList.add('active');
+  setTimeout(() => el.classList.remove('active'), 800);
+}
+
+function handleConnection({ from, to, event }) {
+  if (event === 'connected') {
+    // Show C-A edge if it appears
+    if ((from === 'C' && to === 'A') || (from === 'A' && to === 'C')) {
+      const ac = document.getElementById('edge-AC');
+      if (ac) { ac.style.opacity = '1'; ac.style.strokeDasharray = 'none'; }
+    }
+    flashNode(from, 'var(--green)');
+  }
+}
+
+function animateEdge(msg) {
+  const { from, to, type, layer } = msg;
+  const colour = layer === 'dht' ? '#3fb950' : '#58a6ff';
+  if (type && (type.includes('PONG') || type.includes('PING') || type.includes('FIND_NODE'))) return;
+  flashNode(from, colour);
+  animateBall(from, to, colour);
+  flashEdge(from, to);
+}
+
+// ── Message log ───────────────────────────────────────────────────────────────
+
+function toggleFilter(layer) {
+  filters[layer] = !filters[layer];
+  document.getElementById(`filter-${layer}`).classList.toggle('on', filters[layer]);
+}
+
+function clearLog() {
+  document.getElementById('log').innerHTML = '';
+  logCount = 0;
+  document.getElementById('log-count').textContent = '0 messages';
+}
+
+function handleMsg(msg) {
+  animateEdge(msg);
+  if (!filters[msg.layer]) return;
+  addLogEntry(msg);
+}
+
+function addLogEntry(msg) {
+  const log = document.getElementById('log');
+  const div = document.createElement('div');
+  div.className = `log-entry`;
+
+  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false, fractionalSecondDigits: 2 });
+
+  div.innerHTML = `
+    <span class="log-badge ${msg.layer}">${msg.layer.toUpperCase()}</span>
+    <span class="log-route">${msg.from || '?'} → ${msg.to || '?'}</span>
+    <span class="log-type ${msg.type}">${msg.type || ''}</span>
+    <span class="log-cid">${msg.cid || ''}</span>
+    <span class="log-bytes">${msg.payloadBytes != null ? msg.payloadBytes + ' B' : ''}</span>
+    <span class="log-ts">${ts}</span>
+  `;
+  log.prepend(div);
+  while (log.children.length > 200) log.lastChild.remove();
+
+  logCount++;
+  document.getElementById('log-count').textContent = `${logCount} messages`;
+}
+
+// ── Demo step outcomes ────────────────────────────────────────────────────────
+
+function handleStep({ step, cid1, cid2, cid3, bytes, match, error }) {
+  const status = document.getElementById('demo-status');
+
+  if (step === 'add-to-a') {
+    document.getElementById('cid1-val').textContent = cid1;
+    document.getElementById('cid1-val').classList.remove('cid-empty');
+    document.getElementById('cid2-val').textContent = cid2;
+    document.getElementById('cid2-val').classList.remove('cid-empty');
+    document.getElementById('cid3-val').textContent = cid3;
+    document.getElementById('cid3-val').classList.remove('cid-empty');
+    flashNode('A', 'var(--blue)');
+    status.className = 'ok';
+    status.innerHTML = `
+      <strong>Step 1 complete.</strong> Node A hashed the data and computed three CIDs.
+      CID¹ and CID³ were announced to the DHT. CID² is kept secret.
+      <br><br>Now press <strong>Step 2</strong> to retrieve from C.
+    `;
+  }
+
+  if (step === 'retrieve-from-c') {
+    if (error) {
+      status.className = 'error';
+      status.textContent = 'Retrieval failed: ' + error;
+    } else {
+      flashNode('C', 'var(--green)');
+      flashNode('A', 'var(--green)');
+      flashEdge('A','C');
+      status.className = 'ok';
+      status.innerHTML = `
+        <strong>Step 2 complete.</strong> Node C queried B's DHT, discovered A as provider,
+        opened a direct TCP connection, completed the 4-step privacy handshake, and received
+        ${bytes} bytes — integrity verified ✓ (H(data) = CID¹ digest).
+        <br><br>Watch the log above for WANT_HAVE → PRIVACY_CHALLENGE → PRIVACY_RESPONSE → PRIVACY_BLOCK.
+      `;
+    }
+  }
+
+  if (step === 'send-decoy') {
+    flashNode('C', 'var(--orange)');
+    status.className = 'ok';
+    status.innerHTML = `
+      <strong>Decoy sent.</strong> C sent a <span style="color:var(--orange)">DECOY_REQUEST</span>
+      that is indistinguishable from a real retrieval to any network observer.
+      Node A responded with random bits — no real data was transferred.
+    `;
+  }
+}
+
+// ── Demo button actions ───────────────────────────────────────────────────────
+
+async function runAction(name) {
+  const btnMap = { 'add-to-a': 'btn-add', 'retrieve-from-c': 'btn-get', 'send-decoy': 'btn-decoy' };
+  const btn    = document.getElementById(btnMap[name]);
+  const status = document.getElementById('demo-status');
+
+  btn.disabled = true;
+  status.className = 'busy';
+  status.innerHTML = `<em>Running…</em>`;
+
+  try {
+    const r    = await fetch(`/action/${name}`, { method: 'POST' });
+    const data = await r.json();
+    if (!data.ok) {
+      status.className = 'error';
+      status.textContent = data.error || 'Unknown error';
+    }
+    // Outcome handled via SSE 'step' event
+  } catch (err) {
+    status.className = 'error';
+    status.textContent = 'Network error: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

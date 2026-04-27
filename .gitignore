@@ -1,0 +1,7 @@
+node_modules/
+dist/
+ipfs-data/
+peer-data/
+received/
+retrieved-*.bin
+*.log
