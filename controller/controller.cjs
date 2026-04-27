@@ -114,6 +114,20 @@ async function start(emitFn) {
     level:   'ok',
     message: `Node started on port ${port} — Peer ID: ${node.id}`,
   });
+
+  // ── Auto-connect to bootstrap peers ─────────────────────────────────────
+  const bootstrapPeers = _loadBootstrapPeers();
+  for (const addr of bootstrapPeers) {
+    const [ip, portStr] = addr.split(':');
+    if (ip && portStr) {
+      try {
+        await node.connect(ip, parseInt(portStr, 10));
+        _emit('controller:event', { level: 'ok', message: `Bootstrap: connected to ${addr}` });
+      } catch (e) {
+        _emit('controller:event', { level: 'warn', message: `Bootstrap: failed to connect to ${addr} \u2014 ${e.message}` });
+      }
+    }
+  }
 }
 
 /**
@@ -432,4 +446,222 @@ async function sendDecoy() {
   }
 }
 
-module.exports = { start, stop, getStatus, addFile, getFile, getPeers, connectToPeer, disconnectPeer, getConfig, cacheFromPeer, getCachedItems, removeCached, setDecoysEnabled, sendDecoy };
+// ── DHT operations ─────────────────────────────────────────────────────────
+
+/**
+ * getDHTStats() → { peers, providers, registry, connections, kBucketSize }
+ */
+function getDHTStats() {
+  if (!node) return { peers: 0, providers: 0, registry: 0, connections: 0, kBucketSize: 20 };
+  const dhtStat = node.dht.stat();
+  return {
+    peers:        dhtStat.peers,
+    providers:    dhtStat.providers,
+    registry:     node._cidRegistry.size,
+    connections:  node.transport.connections.size,
+    kBucketSize:  20,
+  };
+}
+
+/**
+ * getDHTBuckets() → Array<{ index, peers: [{ peerId, ip, port, lastSeen }] }>
+ *
+ * Returns only non-empty k-buckets from the routing table.
+ */
+function getDHTBuckets() {
+  if (!node) return [];
+  return node.dht.table.buckets
+    .map((bucket, i) => ({
+      index: i,
+      peers: bucket.map(p => ({
+        peerId:   p.peerId,
+        ip:       p.ip,
+        port:     p.port,
+        lastSeen: p.lastSeen,
+      })),
+    }))
+    .filter(b => b.peers.length > 0);
+}
+
+/**
+ * getDHTProviders() → { providers: [{ cid, peers }], registry: [{ cid3, peers, selfOwned }] }
+ *
+ * Returns both DHT provider records and the CID registry (decoy targets).
+ */
+function getDHTProviders() {
+  if (!node) return { providers: [], registry: [] };
+
+  const providers = [];
+  for (const [cid, peerMap] of node.dht._providers) {
+    providers.push({
+      cid,
+      peers: [...peerMap.values()].map(p => ({ peerId: p.peerId, ip: p.ip, port: p.port })),
+    });
+  }
+
+  const registry = [];
+  for (const [cid3, peerSet] of node._cidRegistry) {
+    registry.push({
+      cid3,
+      peers:     [...peerSet],
+      selfOwned: peerSet.has(node.id),
+    });
+  }
+
+  return { providers, registry };
+}
+
+/**
+ * dhtLookup(cid) → { ok, providers: [{ peerId, ip, port }], error? }
+ *
+ * Runs an iterative DHT findProviders lookup for a given CID.
+ */
+async function dhtLookup(cid) {
+  if (!node) return { ok: false, error: 'Node not running' };
+  try {
+    const results = await node.dht.findProviders(cid, 8000);
+    return {
+      ok: true,
+      providers: results.map(p => ({ peerId: p.peerId, ip: p.ip, port: p.port })),
+    };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+module.exports = { start, stop, getStatus, addFile, getFile, getPeers, connectToPeer, disconnectPeer, getConfig, cacheFromPeer, getCachedItems, removeCached, setDecoysEnabled, sendDecoy, getDHTStats, getDHTBuckets, getDHTProviders, dhtLookup, getStorageStats, getBlocks, pinBlock, unpinBlock, deleteBlock, runGC, getBandwidthStats, getPrivacyScore, getBootstrapPeers, addBootstrapPeer, removeBootstrapPeer };
+
+// ── Storage operations ──────────────────────────────────────────────────────
+
+function getStorageStats() {
+  if (!node) return { blockCount: 0, totalBytes: 0, pinnedCount: 0 };
+  return node.store.stat();
+}
+
+function getBlocks() {
+  if (!node) return [];
+  const cids = node.store.list();
+  return cids.map(cid => {
+    let size = 0;
+    try {
+      size = fs.statSync(path.join(node.store.blocksDir, cid)).size;
+    } catch { /* ignore */ }
+    const pinType = node.store.pins.get(cid) || null;
+    return { cid, size, pinType };
+  });
+}
+
+function pinBlock(cid, type) {
+  if (!node) return { ok: false, error: 'Node not running' };
+  try {
+    node.store.pin(cid, type);
+    _emit('controller:event', { level: 'info', message: `Pinned block (${type}): ${cid.slice(0, 24)}\u2026` });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function unpinBlock(cid) {
+  if (!node) return { ok: false, error: 'Node not running' };
+  try {
+    node.store.unpin(cid);
+    _emit('controller:event', { level: 'info', message: `Unpinned block: ${cid.slice(0, 24)}\u2026` });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function deleteBlock(cid) {
+  if (!node) return { ok: false, error: 'Node not running' };
+  try {
+    node.store.delete(cid);
+    _emit('controller:event', { level: 'info', message: `Deleted block: ${cid.slice(0, 24)}\u2026` });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function runGC() {
+  if (!node) return { ok: false, error: 'Node not running' };
+  try {
+    const deleted = node.store.gc();
+    _emit('controller:event', { level: 'ok', message: `GC complete: ${deleted.length} block(s) removed` });
+    return { ok: true, deleted };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ── Bandwidth & Privacy ─────────────────────────────────────────────────────
+
+function getBandwidthStats() {
+  if (!node) return { peers: [], totalSent: 0, totalReceived: 0 };
+  const peerStats = [];
+  let totalSent = 0, totalReceived = 0;
+  for (const [peerId, ledger] of node.bitswap.ledgers) {
+    peerStats.push({
+      peerId,
+      bytesSent: ledger.bytesSent,
+      bytesReceived: ledger.bytesReceived,
+      debtRatio: ledger.debtRatio(),
+    });
+    totalSent += ledger.bytesSent;
+    totalReceived += ledger.bytesReceived;
+  }
+  return { peers: peerStats, totalSent, totalReceived };
+}
+
+function getPrivacyScore() {
+  if (!node) return { decoysEnabled: false, registrySize: 0, connectedPeers: 0, score: 'poor' };
+  const decoysEnabled = !!node._decoysEnabled;
+  const registrySize = node._cidRegistry.size;
+  const connectedPeers = node.transport.connections.size;
+
+  let score = 'poor';
+  if (decoysEnabled && registrySize > 0 && connectedPeers > 0) {
+    score = (connectedPeers >= 3 && registrySize >= 3) ? 'good' : 'fair';
+  } else if (decoysEnabled && connectedPeers > 0) {
+    score = 'fair';
+  }
+
+  return { decoysEnabled, registrySize, connectedPeers, score };
+}
+
+// ── Bootstrap Peers ─────────────────────────────────────────────────────────
+
+const BOOTSTRAP_FILE = path.join(os.homedir(), '.ipfs-desktop-privacy', 'bootstrap.json');
+
+function _loadBootstrapPeers() {
+  try {
+    return JSON.parse(fs.readFileSync(BOOTSTRAP_FILE, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function _saveBootstrapPeers(peers) {
+  fs.mkdirSync(path.dirname(BOOTSTRAP_FILE), { recursive: true });
+  fs.writeFileSync(BOOTSTRAP_FILE, JSON.stringify(peers, null, 2));
+}
+
+function getBootstrapPeers() {
+  return _loadBootstrapPeers();
+}
+
+function addBootstrapPeer(address) {
+  if (!/^[\d.]+:\d+$/.test(address)) return { ok: false, error: 'Invalid format. Use ip:port (e.g. 127.0.0.1:4001)' };
+  const list = _loadBootstrapPeers();
+  if (list.includes(address)) return { ok: false, error: 'Already in bootstrap list' };
+  list.push(address);
+  _saveBootstrapPeers(list);
+  return { ok: true };
+}
+
+function removeBootstrapPeer(address) {
+  const list = _loadBootstrapPeers().filter(a => a !== address);
+  _saveBootstrapPeers(list);
+  return { ok: true };
+}

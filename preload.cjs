@@ -35,6 +35,29 @@ contextBridge.exposeInMainWorld('ipfs', {
   setDecoysEnabled: (enabled) => ipcRenderer.invoke('decoys:set', enabled),
   sendDecoy:        ()        => ipcRenderer.invoke('decoys:send'),
 
+  // ── DHT operations ─────────────────────────────────────────────────────
+  getDHTStats:     ()    => ipcRenderer.invoke('dht:stats'),
+  getDHTBuckets:   ()    => ipcRenderer.invoke('dht:buckets'),
+  getDHTProviders: ()    => ipcRenderer.invoke('dht:providers'),
+  dhtLookup:       (cid) => ipcRenderer.invoke('dht:lookup', cid),
+
+  // ── Storage operations ────────────────────────────────────────────────
+  getStorageStats: ()          => ipcRenderer.invoke('storage:stats'),
+  getBlocks:       ()          => ipcRenderer.invoke('storage:blocks'),
+  pinBlock:        (cid, type) => ipcRenderer.invoke('storage:pin', cid, type),
+  unpinBlock:      (cid)       => ipcRenderer.invoke('storage:unpin', cid),
+  deleteBlock:     (cid)       => ipcRenderer.invoke('storage:delete', cid),
+  runGC:           ()          => ipcRenderer.invoke('storage:gc'),
+
+  // ── Bandwidth & Privacy ───────────────────────────────────────────────
+  getBandwidthStats: () => ipcRenderer.invoke('bandwidth:stats'),
+  getPrivacyScore:   () => ipcRenderer.invoke('privacy:score'),
+
+  // ── Bootstrap peers ───────────────────────────────────────────────────
+  getBootstrapPeers:   ()        => ipcRenderer.invoke('bootstrap:list'),
+  addBootstrapPeer:    (address) => ipcRenderer.invoke('bootstrap:add', address),
+  removeBootstrapPeer: (address) => ipcRenderer.invoke('bootstrap:remove', address),
+
   // ── Native dialogs ────────────────────────────────────────────────────────
   openFileDialog: ()            => ipcRenderer.invoke('dialog:openFile'),
   saveFileDialog: (defaultName) => ipcRenderer.invoke('dialog:saveFile', defaultName),

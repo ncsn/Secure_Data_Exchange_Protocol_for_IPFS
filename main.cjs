@@ -187,6 +187,100 @@ ipcMain.handle('decoys:send', async () => {
   return ctrl.sendDecoy();
 });
 
+// DHT operations
+ipcMain.handle('dht:stats', async () => {
+  const ctrl = getController();
+  if (!ctrl) return { peers: 0, providers: 0, registry: 0, connections: 0, kBucketSize: 20 };
+  return ctrl.getDHTStats();
+});
+
+ipcMain.handle('dht:buckets', async () => {
+  const ctrl = getController();
+  if (!ctrl) return [];
+  return ctrl.getDHTBuckets();
+});
+
+ipcMain.handle('dht:providers', async () => {
+  const ctrl = getController();
+  if (!ctrl) return { providers: [], registry: [] };
+  return ctrl.getDHTProviders();
+});
+
+ipcMain.handle('dht:lookup', async (_event, cid) => {
+  const ctrl = getController();
+  if (!ctrl) return { ok: false, error: 'Controller not loaded' };
+  return ctrl.dhtLookup(cid);
+});
+
+// Storage operations
+ipcMain.handle('storage:stats', async () => {
+  const ctrl = getController();
+  if (!ctrl) return { blockCount: 0, totalBytes: 0, pinnedCount: 0 };
+  return ctrl.getStorageStats();
+});
+
+ipcMain.handle('storage:blocks', async () => {
+  const ctrl = getController();
+  if (!ctrl) return [];
+  return ctrl.getBlocks();
+});
+
+ipcMain.handle('storage:pin', async (_event, cid, type) => {
+  const ctrl = getController();
+  if (!ctrl) return { ok: false, error: 'Controller not loaded' };
+  return ctrl.pinBlock(cid, type);
+});
+
+ipcMain.handle('storage:unpin', async (_event, cid) => {
+  const ctrl = getController();
+  if (!ctrl) return { ok: false, error: 'Controller not loaded' };
+  return ctrl.unpinBlock(cid);
+});
+
+ipcMain.handle('storage:delete', async (_event, cid) => {
+  const ctrl = getController();
+  if (!ctrl) return { ok: false, error: 'Controller not loaded' };
+  return ctrl.deleteBlock(cid);
+});
+
+ipcMain.handle('storage:gc', async () => {
+  const ctrl = getController();
+  if (!ctrl) return { ok: false, error: 'Controller not loaded' };
+  return ctrl.runGC();
+});
+
+// Bandwidth & Privacy
+ipcMain.handle('bandwidth:stats', async () => {
+  const ctrl = getController();
+  if (!ctrl) return { peers: [], totalSent: 0, totalReceived: 0 };
+  return ctrl.getBandwidthStats();
+});
+
+ipcMain.handle('privacy:score', async () => {
+  const ctrl = getController();
+  if (!ctrl) return { decoysEnabled: false, registrySize: 0, connectedPeers: 0, score: 'poor' };
+  return ctrl.getPrivacyScore();
+});
+
+// Bootstrap peers
+ipcMain.handle('bootstrap:list', async () => {
+  const ctrl = getController();
+  if (!ctrl) return [];
+  return ctrl.getBootstrapPeers();
+});
+
+ipcMain.handle('bootstrap:add', async (_event, address) => {
+  const ctrl = getController();
+  if (!ctrl) return { ok: false, error: 'Controller not loaded' };
+  return ctrl.addBootstrapPeer(address);
+});
+
+ipcMain.handle('bootstrap:remove', async (_event, address) => {
+  const ctrl = getController();
+  if (!ctrl) return { ok: false, error: 'Controller not loaded' };
+  return ctrl.removeBootstrapPeer(address);
+});
+
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {

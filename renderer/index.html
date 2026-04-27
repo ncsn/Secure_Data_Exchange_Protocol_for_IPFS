@@ -21,8 +21,10 @@
         <li class="nav-item active" data-page="dashboard">Dashboard</li>
         <li class="nav-item" data-page="add">Add File</li>
         <li class="nav-item" data-page="get">Get File</li>
+        <li class="nav-item" data-page="storage">Storage</li>
         <li class="nav-item" data-page="peers">Peers</li>
         <li class="nav-item" data-page="cache">Cache</li>
+        <li class="nav-item" data-page="dht">DHT</li>
         <li class="nav-item" data-page="log">Event Log</li>
         <li class="nav-item" data-page="settings">Settings</li>
       </ul>
@@ -53,13 +55,42 @@
             <div class="card-value" id="card-blocks">0</div>
           </div>
           <div class="card">
+            <div class="card-label">Storage Used</div>
+            <div class="card-value" id="card-storage-bytes">0 B</div>
+          </div>
+          <div class="card">
             <div class="card-label">Cached Items</div>
             <div class="card-value" id="card-cached">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">DHT Peers</div>
+            <div class="card-value" id="card-dht-peers">0</div>
           </div>
           <div class="card">
             <div class="card-label">Protocol</div>
             <div class="card-value mono">/triple-hash/1.0.0</div>
           </div>
+        </div>
+
+        <!-- Privacy Health -->
+        <div class="privacy-health-card" id="privacy-health">
+          <h2>Privacy Health</h2>
+          <div class="privacy-score">
+            <span class="privacy-dot" id="privacy-dot"></span>
+            <span id="privacy-score-text">Unknown</span>
+          </div>
+          <div class="privacy-details">
+            <div class="privacy-detail"><span class="label">Decoys:</span> <span id="privacy-decoys">--</span></div>
+            <div class="privacy-detail"><span class="label">CID Registry:</span> <span id="privacy-registry">--</span></div>
+            <div class="privacy-detail"><span class="label">Connected Peers:</span> <span id="privacy-peers">--</span></div>
+          </div>
+        </div>
+
+        <!-- Network Topology -->
+        <h2>Network Topology</h2>
+        <div class="topology-container">
+          <canvas id="topology-canvas"></canvas>
+          <div id="topo-tooltip" class="topo-tooltip hidden"></div>
         </div>
       </section>
 
@@ -174,6 +205,43 @@
         </div>
       </section>
 
+      <!-- Storage -->
+      <section id="page-storage" class="page">
+        <h1>Storage</h1>
+        <p class="hint">Browse local blocks, manage pins, and run garbage collection.</p>
+
+        <div class="cards">
+          <div class="card">
+            <div class="card-label">Block Count</div>
+            <div class="card-value" id="storage-card-blocks">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Total Storage</div>
+            <div class="card-value" id="storage-card-bytes">0 B</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Pinned Blocks</div>
+            <div class="card-value" id="storage-card-pinned">0</div>
+          </div>
+        </div>
+
+        <div class="storage-usage-bar">
+          <div class="usage-fill" id="storage-usage-fill"></div>
+          <span class="usage-label" id="storage-usage-label">0 B used</span>
+        </div>
+
+        <div class="form-row">
+          <button id="btn-refresh-storage">Refresh</button>
+          <button id="btn-run-gc" class="primary">Run Garbage Collection</button>
+        </div>
+        <div id="gc-result" class="form-error"></div>
+
+        <table id="storage-table">
+          <thead><tr><th>CID</th><th>Size</th><th>Pin Status</th><th>Actions</th></tr></thead>
+          <tbody id="storage-tbody"></tbody>
+        </table>
+      </section>
+
       <!-- Peers -->
       <section id="page-peers" class="page">
         <h1>Connected Peers</h1>
@@ -186,7 +254,7 @@
         </div>
         <div id="connect-error" class="form-error"></div>
         <table id="peer-table">
-          <thead><tr><th>Peer ID</th><th>Address</th><th>Protocol</th><th>Source</th><th>Action</th></tr></thead>
+          <thead><tr><th>Peer ID</th><th>Address</th><th>Protocol</th><th>Source</th><th>Sent</th><th>Received</th><th>Action</th></tr></thead>
           <tbody id="peer-tbody"></tbody>
         </table>
       </section>
@@ -215,6 +283,73 @@
           <thead><tr><th>CID&#179;</th><th>Cached At</th><th>Action</th></tr></thead>
           <tbody id="cache-tbody"></tbody>
         </table>
+      </section>
+
+      <!-- DHT -->
+      <section id="page-dht" class="page">
+        <h1>DHT Network</h1>
+        <p class="hint">Kademlia DHT routing table, provider records, and CID registry overview.</p>
+
+        <div class="cards">
+          <div class="card">
+            <div class="card-label">Routing Table Peers</div>
+            <div class="card-value" id="dht-card-peers">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Provider Records</div>
+            <div class="card-value" id="dht-card-providers">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">CID Registry</div>
+            <div class="card-value" id="dht-card-registry">0</div>
+          </div>
+          <div class="card">
+            <div class="card-label">K-Bucket Size</div>
+            <div class="card-value" id="dht-card-kbucket">20</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Active Connections</div>
+            <div class="card-value" id="dht-card-connections">0</div>
+          </div>
+        </div>
+
+        <div class="dht-section">
+          <h2>K-Buckets</h2>
+          <p class="hint">Non-empty buckets from the 256-bucket Kademlia routing table. Click a row to expand peer details.</p>
+          <table class="dht-table">
+            <thead><tr><th>Bucket</th><th>Distance Prefix</th><th>Peers</th><th></th></tr></thead>
+            <tbody id="dht-buckets-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="dht-section">
+          <h2>Provider Records</h2>
+          <p class="hint">CIDs announced to the DHT with their known providers.</p>
+          <table class="dht-table">
+            <thead><tr><th>CID</th><th>Providers</th><th>Details</th></tr></thead>
+            <tbody id="dht-providers-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="dht-section">
+          <h2>CID Registry (Decoy Targets)</h2>
+          <p class="hint">CID&#179; values seen from DHT announcements. Used as targets for decoy requests.</p>
+          <table class="dht-table">
+            <thead><tr><th>CID&#179;</th><th>Known Providers</th><th>Self-owned</th></tr></thead>
+            <tbody id="dht-registry-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="dht-section">
+          <h2>Lookup Tool</h2>
+          <p class="hint">Run an iterative DHT findProviders query for any CID.</p>
+          <div class="form-row">
+            <input type="text" id="dht-lookup-cid" placeholder="CID string&#8230;" />
+            <button id="btn-dht-lookup" class="primary">Find Providers</button>
+          </div>
+          <div id="dht-lookup-error" class="form-error"></div>
+          <div id="dht-lookup-results" class="result-box hidden"></div>
+        </div>
       </section>
 
       <!-- Event Log -->
@@ -274,6 +409,16 @@
           </div>
         </div>
         <div class="settings-group">
+          <h2>Bootstrap Peers</h2>
+          <p class="hint" style="margin-bottom:12px">Saved peers are automatically connected when the node starts.</p>
+          <div class="form-row">
+            <input type="text" id="bootstrap-address" placeholder="ip:port (e.g. 192.168.1.10:4001)" />
+            <button id="btn-add-bootstrap" class="primary">Add</button>
+          </div>
+          <div id="bootstrap-error" class="form-error"></div>
+          <div id="bootstrap-list" class="bootstrap-list"></div>
+        </div>
+        <div class="settings-group">
           <h2>Downloads</h2>
           <div class="setting-row">
             <div class="setting-info">
@@ -288,6 +433,9 @@
 
     </main>
   </div>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
 
   <script src="renderer.js"></script>
 </body>

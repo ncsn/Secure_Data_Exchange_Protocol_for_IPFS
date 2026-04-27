@@ -20,6 +20,38 @@ navItems.forEach(item => {
 let nodeRunning = false;
 const peers = new Map(); // peerId → { address, protocol, source }
 
+// ── Toast Notifications ──────────────────────────────────────────────────────
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<div class="toast-message">${message}</div>`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('removing');
+    toast.addEventListener('animationend', () => toast.remove());
+  }, 4000);
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+function formatBytes(n) {
+  if (n === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1);
+  const val = n / Math.pow(1024, i);
+  return `${val < 10 ? val.toFixed(1) : Math.round(val)} ${units[i]}`;
+}
+
+let bandwidthData = new Map(); // peerId → { bytesSent, bytesReceived }
+
+async function refreshBandwidth() {
+  const bw = await window.ipfs.getBandwidthStats();
+  bandwidthData.clear();
+  for (const p of bw.peers) {
+    bandwidthData.set(p.peerId, { bytesSent: p.bytesSent, bytesReceived: p.bytesReceived });
+  }
+}
+
 // ── Node toggle ───────────────────────────────────────────────────────────────
 const btnToggle  = document.getElementById('btn-toggle');
 const statusDot  = document.getElementById('status-dot');
@@ -71,6 +103,25 @@ async function refreshStatus() {
   // Update cached items count
   const items = await window.ipfs.getCachedItems();
   document.getElementById('card-cached').textContent = items.length;
+
+  // Storage & DHT cards
+  const storage = await window.ipfs.getStorageStats();
+  document.getElementById('card-storage-bytes').textContent = formatBytes(storage.totalBytes);
+  const dht = await window.ipfs.getDHTStats();
+  document.getElementById('card-dht-peers').textContent = dht.peers;
+
+  // Privacy health
+  const privacy = await window.ipfs.getPrivacyScore();
+  const dot = document.getElementById('privacy-dot');
+  dot.className = `privacy-dot ${privacy.score}`;
+  document.getElementById('privacy-score-text').textContent = privacy.score.charAt(0).toUpperCase() + privacy.score.slice(1);
+  document.getElementById('privacy-decoys').textContent = privacy.decoysEnabled ? 'Enabled' : 'Disabled';
+  document.getElementById('privacy-registry').textContent = `${privacy.registrySize} CID\u00b3s`;
+  document.getElementById('privacy-peers').textContent = privacy.connectedPeers;
+
+  // Topology (only if Dashboard is active)
+  const dashActive = document.getElementById('page-dashboard').classList.contains('active');
+  if (dashActive) refreshTopology();
 }
 setInterval(refreshStatus, 5000);
 
@@ -129,8 +180,10 @@ btnAdd.addEventListener('click', async () => {
     document.getElementById('res-cid3').textContent = res.cid3;
     addResult.classList.remove('hidden');
     log('ok', `File added. CID\u00b3 published: ${res.cid3}`);
+    showToast('File added successfully', 'success');
   } else {
     log('error', `Add failed: ${res?.error || 'unknown'}`);
+    showToast(`Add failed: ${res?.error || 'unknown'}`, 'error');
   }
 });
 
@@ -218,6 +271,7 @@ btnGet.addEventListener('click', async () => {
     document.getElementById('res-verified').style.color = res.verified ? 'var(--green)' : 'var(--red)';
     getResult.classList.remove('hidden');
     log('ok', `File retrieved and saved to: ${res.savedTo}`);
+    showToast('File retrieved and saved', 'success');
   } else {
     const errorMsg = improveErrorMessage(res?.error || 'unknown');
     getError.textContent = errorMsg;
@@ -238,14 +292,17 @@ function renderPeerTable() {
   const tbody = document.getElementById('peer-tbody');
   tbody.innerHTML = '';
   if (peers.size === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);text-align:center">No peers connected. Use the form above to connect to a peer.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center">No peers connected. Use the form above to connect to a peer.</td></tr>';
     return;
   }
   for (const [id, info] of peers) {
     const tr = document.createElement('tr');
     const src = info.source || 'transport';
     const badge = src === 'transport' ? 'badge-transport' : 'badge-dht';
-    tr.innerHTML = `<td>${id}</td><td>${info.address || '\u2014'}</td><td>${info.protocol || '\u2014'}</td><td><span class="badge ${badge}">${src}</span></td><td><button class="btn-disconnect-peer" data-peer-id="${id}">Disconnect</button></td>`;
+    const bw = bandwidthData.get(id);
+    const sent = bw ? formatBytes(bw.bytesSent) : '\u2014';
+    const recv = bw ? formatBytes(bw.bytesReceived) : '\u2014';
+    tr.innerHTML = `<td>${id}</td><td>${info.address || '\u2014'}</td><td>${info.protocol || '\u2014'}</td><td><span class="badge ${badge}">${src}</span></td><td>${sent}</td><td>${recv}</td><td><button class="btn-disconnect-peer" data-peer-id="${id}">Disconnect</button></td>`;
     tbody.appendChild(tr);
   }
 }
@@ -258,6 +315,7 @@ async function refreshPeerList() {
     peers.set(p.peerId, { address: p.address, protocol: p.protocol, source: p.source });
   }
   document.getElementById('card-peer-count').textContent = peers.size;
+  await refreshBandwidth();
   renderPeerTable();
 }
 
@@ -308,6 +366,8 @@ window.ipfs.onPeerConnected(data => {
   document.getElementById('card-peer-count').textContent = peers.size;
   renderPeerTable();
   log('ok', `Peer connected: ${data.peerId}`);
+  showToast(`Peer connected: ${data.peerId.slice(0, 16)}\u2026`, 'success');
+  if (document.getElementById('page-dashboard').classList.contains('active')) refreshTopology();
 });
 
 window.ipfs.onPeerDisconnected(data => {
@@ -315,6 +375,8 @@ window.ipfs.onPeerDisconnected(data => {
   document.getElementById('card-peer-count').textContent = peers.size;
   renderPeerTable();
   log('warn', `Peer disconnected: ${data.peerId}`);
+  showToast('Peer disconnected', 'warning');
+  if (document.getElementById('page-dashboard').classList.contains('active')) refreshTopology();
 });
 
 window.ipfs.onTransferUpdate(data => {
@@ -371,6 +433,7 @@ window.ipfs.onTransferUpdate(data => {
 
 window.ipfs.onControllerEvent(data => {
   log(data.level || 'info', data.message);
+  if (data.level === 'error') showToast(data.message, 'error');
 });
 
 // ── Cache ────────────────────────────────────────────────────────────────────
@@ -417,6 +480,7 @@ btnCache.addEventListener('click', async () => {
   if (res && res.ok) {
     cacheResult.classList.remove('hidden');
     log('ok', `Cached CID\u00b3: ${cid3.slice(0, 24)}\u2026`);
+    showToast('Cached successfully', 'success');
     refreshCacheTable();
   } else {
     cacheError.textContent = `Cache failed: ${res?.error || 'unknown'}`;
@@ -532,6 +596,432 @@ if (btnSendDecoy) {
   });
 }
 
+// ── DHT ─────────────────────────────────────────────────────────────────────
+let dhtInterval = null;
+
+async function refreshDHT() {
+  if (!nodeRunning) return;
+
+  // Stats cards
+  const stats = await window.ipfs.getDHTStats();
+  document.getElementById('dht-card-peers').textContent       = stats.peers;
+  document.getElementById('dht-card-providers').textContent   = stats.providers;
+  document.getElementById('dht-card-registry').textContent    = stats.registry;
+  document.getElementById('dht-card-connections').textContent = stats.connections;
+  document.getElementById('dht-card-kbucket').textContent     = stats.kBucketSize;
+
+  // K-Buckets table
+  const buckets = await window.ipfs.getDHTBuckets();
+  const bucketsTbody = document.getElementById('dht-buckets-tbody');
+  bucketsTbody.innerHTML = '';
+
+  if (buckets.length === 0) {
+    bucketsTbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center">No peers in routing table</td></tr>';
+  } else {
+    for (const b of buckets) {
+      // Main row
+      const tr = document.createElement('tr');
+      tr.className = 'bucket-row';
+      tr.dataset.bucket = b.index;
+      tr.innerHTML = `<td>${b.index}</td><td class="mono">${b.index}-bit</td><td>${b.peers.length}</td><td class="bucket-toggle">\u25B6</td>`;
+      bucketsTbody.appendChild(tr);
+
+      // Detail row (hidden)
+      const detailTr = document.createElement('tr');
+      detailTr.className = 'bucket-peers';
+      const detailTd = document.createElement('td');
+      detailTd.colSpan = 4;
+      let html = '<div class="bucket-peers-inner">';
+      for (const p of b.peers) {
+        const ago = p.lastSeen ? formatAgo(p.lastSeen) : '\u2014';
+        html += `<div class="bucket-peer-entry"><span class="mono">${p.peerId.slice(0, 24)}\u2026</span><span>${p.ip}:${p.port}</span><span class="muted">seen ${ago}</span></div>`;
+      }
+      html += '</div>';
+      detailTd.innerHTML = html;
+      detailTr.appendChild(detailTd);
+      bucketsTbody.appendChild(detailTr);
+    }
+  }
+
+  // Provider Records + CID Registry
+  const { providers, registry } = await window.ipfs.getDHTProviders();
+
+  const provTbody = document.getElementById('dht-providers-tbody');
+  provTbody.innerHTML = '';
+  if (providers.length === 0) {
+    provTbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center">No provider records</td></tr>';
+  } else {
+    for (const pr of providers) {
+      const tr = document.createElement('tr');
+      const peerList = pr.peers.map(p => `${p.peerId.slice(0, 12)}\u2026`).join(', ');
+      tr.innerHTML = `<td class="mono" style="max-width:280px;overflow:hidden;text-overflow:ellipsis">${pr.cid}</td><td>${pr.peers.length} peer${pr.peers.length !== 1 ? 's' : ''}</td><td class="mono" style="font-size:11px">${peerList}</td>`;
+      provTbody.appendChild(tr);
+    }
+  }
+
+  const regTbody = document.getElementById('dht-registry-tbody');
+  regTbody.innerHTML = '';
+  if (registry.length === 0) {
+    regTbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center">No CID\u00b3 entries in registry</td></tr>';
+  } else {
+    for (const r of registry) {
+      const tr = document.createElement('tr');
+      const selfBadge = r.selfOwned ? '<span class="badge badge-self">SELF</span>' : '';
+      tr.innerHTML = `<td class="mono" style="max-width:280px;overflow:hidden;text-overflow:ellipsis">${r.cid3}</td><td>${r.peers.length} ${selfBadge}</td><td>${r.selfOwned ? 'Yes' : 'No'}</td>`;
+      regTbody.appendChild(tr);
+    }
+  }
+}
+
+function formatAgo(ts) {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
+}
+
+// Bucket row toggle (event delegation)
+document.getElementById('dht-buckets-tbody').addEventListener('click', (e) => {
+  const row = e.target.closest('.bucket-row');
+  if (!row) return;
+  row.classList.toggle('open');
+});
+
+// DHT tab auto-refresh on navigation
+navItems.forEach(item => {
+  if (item.dataset.page === 'dht') {
+    item.addEventListener('click', () => {
+      refreshDHT();
+      // Start 5s interval while DHT tab is active
+      if (dhtInterval) clearInterval(dhtInterval);
+      dhtInterval = setInterval(refreshDHT, 5000);
+    });
+  } else {
+    item.addEventListener('click', () => {
+      // Stop DHT polling when leaving the tab
+      if (dhtInterval) { clearInterval(dhtInterval); dhtInterval = null; }
+    });
+  }
+});
+
+// DHT Lookup tool
+const btnDhtLookup  = document.getElementById('btn-dht-lookup');
+const dhtLookupCid  = document.getElementById('dht-lookup-cid');
+const dhtLookupErr  = document.getElementById('dht-lookup-error');
+const dhtLookupRes  = document.getElementById('dht-lookup-results');
+
+btnDhtLookup.addEventListener('click', async () => {
+  dhtLookupErr.textContent = '';
+  dhtLookupRes.classList.add('hidden');
+  dhtLookupRes.innerHTML = '';
+
+  if (!nodeRunning) { dhtLookupErr.textContent = 'Start the node first.'; return; }
+
+  const cid = dhtLookupCid.value.trim();
+  if (!cid) { dhtLookupErr.textContent = 'Enter a CID.'; return; }
+
+  btnDhtLookup.disabled = true;
+  log('info', `DHT lookup: ${cid.slice(0, 24)}\u2026`);
+
+  const res = await window.ipfs.dhtLookup(cid);
+  btnDhtLookup.disabled = false;
+
+  if (res && res.ok) {
+    dhtLookupRes.classList.remove('hidden');
+    if (res.providers.length === 0) {
+      dhtLookupRes.innerHTML = '<div style="color:var(--muted)">No providers found for this CID.</div>';
+    } else {
+      let html = `<div style="margin-bottom:8px;font-weight:600">Found ${res.providers.length} provider${res.providers.length !== 1 ? 's' : ''}:</div>`;
+      for (const p of res.providers) {
+        html += `<div class="mono" style="font-size:12px;margin:4px 0">${p.peerId.slice(0, 24)}\u2026 \u2014 ${p.ip}:${p.port}</div>`;
+      }
+      dhtLookupRes.innerHTML = html;
+    }
+    log('ok', `DHT lookup: found ${res.providers.length} provider(s)`);
+  } else {
+    dhtLookupErr.textContent = res?.error || 'Lookup failed';
+    log('error', `DHT lookup failed: ${res?.error || 'unknown'}`);
+  }
+});
+
+// ── Storage ──────────────────────────────────────────────────────────────────
+async function refreshStorageStats() {
+  if (!nodeRunning) return;
+  const stats = await window.ipfs.getStorageStats();
+  document.getElementById('storage-card-blocks').textContent = stats.blockCount;
+  document.getElementById('storage-card-bytes').textContent  = formatBytes(stats.totalBytes);
+  document.getElementById('storage-card-pinned').textContent = stats.pinnedCount;
+  // Usage bar (cap at 1GB for visual)
+  const pct = Math.min(100, (stats.totalBytes / (1024 * 1024 * 1024)) * 100);
+  document.getElementById('storage-usage-fill').style.width = `${pct}%`;
+  document.getElementById('storage-usage-label').textContent = `${formatBytes(stats.totalBytes)} used`;
+}
+
+async function refreshStorageTable() {
+  const tbody = document.getElementById('storage-tbody');
+  tbody.innerHTML = '';
+  if (!nodeRunning) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center">Node not running</td></tr>';
+    return;
+  }
+  const blocks = await window.ipfs.getBlocks();
+  if (blocks.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted);text-align:center">No blocks in storage</td></tr>';
+    return;
+  }
+  for (const b of blocks) {
+    const tr = document.createElement('tr');
+    const pinBadge = b.pinType
+      ? `<span class="badge badge-${b.pinType}">${b.pinType}</span>`
+      : '<span style="color:var(--muted)">unpinned</span>';
+    let actions = '';
+    if (b.pinType) {
+      actions += `<button class="btn-unpin-block" data-cid="${b.cid}">Unpin</button>`;
+    } else {
+      actions += `<button class="btn-pin-block" data-cid="${b.cid}" data-type="direct">Pin</button>`;
+    }
+    actions += `<button class="btn-delete-block" data-cid="${b.cid}">Delete</button>`;
+    tr.innerHTML = `<td class="mono" style="max-width:280px;overflow:hidden;text-overflow:ellipsis">${b.cid}</td><td>${formatBytes(b.size)}</td><td>${pinBadge}</td><td>${actions}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+// Storage event delegation
+document.getElementById('storage-table').addEventListener('click', async (e) => {
+  const target = e.target;
+  if (target.classList.contains('btn-pin-block')) {
+    const cid = target.dataset.cid;
+    const type = target.dataset.type || 'direct';
+    target.disabled = true;
+    const res = await window.ipfs.pinBlock(cid, type);
+    if (res.ok) { showToast('Block pinned', 'success'); }
+    else { showToast(res.error, 'error'); }
+    refreshStorageTable(); refreshStorageStats();
+  }
+  if (target.classList.contains('btn-unpin-block')) {
+    const cid = target.dataset.cid;
+    target.disabled = true;
+    const res = await window.ipfs.unpinBlock(cid);
+    if (res.ok) { showToast('Block unpinned', 'info'); }
+    else { showToast(res.error, 'error'); }
+    refreshStorageTable(); refreshStorageStats();
+  }
+  if (target.classList.contains('btn-delete-block')) {
+    const cid = target.dataset.cid;
+    target.disabled = true;
+    const res = await window.ipfs.deleteBlock(cid);
+    if (res.ok) { showToast('Block deleted', 'warning'); }
+    else { showToast(res.error, 'error'); }
+    refreshStorageTable(); refreshStorageStats();
+  }
+});
+
+document.getElementById('btn-run-gc').addEventListener('click', async () => {
+  if (!nodeRunning) { log('warn', 'Start the node first.'); return; }
+  const btn = document.getElementById('btn-run-gc');
+  btn.disabled = true;
+  const res = await window.ipfs.runGC();
+  btn.disabled = false;
+  const gcResult = document.getElementById('gc-result');
+  if (res.ok) {
+    gcResult.style.color = 'var(--green)';
+    gcResult.textContent = `GC complete: ${res.deleted.length} block(s) removed`;
+    showToast(`GC: ${res.deleted.length} block(s) removed`, 'success');
+    refreshStorageTable(); refreshStorageStats();
+  } else {
+    gcResult.style.color = '';
+    gcResult.textContent = res.error;
+  }
+});
+
+document.getElementById('btn-refresh-storage').addEventListener('click', () => {
+  refreshStorageStats();
+  refreshStorageTable();
+});
+
+// Storage tab nav hook
+navItems.forEach(item => {
+  if (item.dataset.page === 'storage') {
+    item.addEventListener('click', () => { refreshStorageStats(); refreshStorageTable(); });
+  }
+});
+
+// ── Network Topology ─────────────────────────────────────────────────────────
+let topoNodes = [];
+
+function drawTopology(peerList) {
+  const canvas = document.getElementById('topology-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = 400 * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width;
+  const H = 400;
+  const cx = W / 2;
+  const cy = H / 2;
+  ctx.clearRect(0, 0, W, H);
+
+  const transportPeers = peerList.filter(p => p.source === 'transport');
+  const dhtPeers = peerList.filter(p => p.source === 'dht');
+  topoNodes = [];
+
+  // Self node at center
+  topoNodes.push({ id: 'self', label: 'You', x: cx, y: cy, type: 'self' });
+
+  // Transport peers in inner ring
+  const innerR = Math.min(W, H) * 0.28;
+  transportPeers.forEach((p, i) => {
+    const angle = (2 * Math.PI * i) / (transportPeers.length || 1) - Math.PI / 2;
+    topoNodes.push({
+      id: p.peerId, label: p.peerId.slice(0, 8) + '\u2026',
+      x: cx + innerR * Math.cos(angle), y: cy + innerR * Math.sin(angle),
+      type: 'transport',
+    });
+  });
+
+  // DHT-only peers in outer ring
+  const outerR = Math.min(W, H) * 0.42;
+  dhtPeers.forEach((p, i) => {
+    const angle = (2 * Math.PI * i) / (dhtPeers.length || 1) - Math.PI / 2;
+    topoNodes.push({
+      id: p.peerId, label: p.peerId.slice(0, 8) + '\u2026',
+      x: cx + outerR * Math.cos(angle), y: cy + outerR * Math.sin(angle),
+      type: 'dht',
+    });
+  });
+
+  // Draw edges
+  for (const n of topoNodes) {
+    if (n.type === 'self') continue;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(n.x, n.y);
+    if (n.type === 'transport') {
+      ctx.strokeStyle = '#3ecf8e';
+      ctx.setLineDash([]);
+      ctx.lineWidth = 2;
+    } else {
+      ctx.strokeStyle = '#4f9eff';
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 1;
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Draw nodes
+  for (const n of topoNodes) {
+    const r = n.type === 'self' ? 18 : 12;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = n.type === 'self' ? '#4f9eff' : n.type === 'transport' ? '#3ecf8e' : '#7b5ea7';
+    ctx.fill();
+    ctx.strokeStyle = '#2a3148';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '10px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(n.label, n.x, n.y + r + 14);
+  }
+
+  // Legend
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  const lx = 12, ly = H - 36;
+  ctx.fillStyle = '#3ecf8e'; ctx.fillRect(lx, ly, 10, 10);
+  ctx.fillStyle = '#8892a4'; ctx.fillText('Transport', lx + 14, ly + 9);
+  ctx.fillStyle = '#4f9eff'; ctx.fillRect(lx, ly + 16, 10, 10);
+  ctx.fillStyle = '#8892a4'; ctx.fillText('DHT', lx + 14, ly + 25);
+}
+
+// Tooltip
+const topoCanvas = document.getElementById('topology-canvas');
+const topoTip = document.getElementById('topo-tooltip');
+if (topoCanvas) {
+  topoCanvas.addEventListener('mousemove', (e) => {
+    const rect = topoCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    let found = null;
+    for (const n of topoNodes) {
+      const dx = mx - n.x, dy = my - n.y;
+      if (Math.sqrt(dx * dx + dy * dy) < 16) { found = n; break; }
+    }
+    if (found && found.type !== 'self') {
+      topoTip.textContent = found.id;
+      topoTip.style.left = `${mx + 16}px`;
+      topoTip.style.top = `${my - 10}px`;
+      topoTip.classList.remove('hidden');
+    } else {
+      topoTip.classList.add('hidden');
+    }
+  });
+  topoCanvas.addEventListener('mouseleave', () => topoTip.classList.add('hidden'));
+}
+
+async function refreshTopology() {
+  if (!nodeRunning) return;
+  const peerList = await window.ipfs.getPeers();
+  drawTopology(peerList);
+}
+
+window.addEventListener('resize', () => {
+  if (document.getElementById('page-dashboard').classList.contains('active')) refreshTopology();
+});
+
+// ── Bootstrap Peers ──────────────────────────────────────────────────────────
+async function refreshBootstrapList() {
+  const list = await window.ipfs.getBootstrapPeers();
+  const container = document.getElementById('bootstrap-list');
+  container.innerHTML = '';
+  if (list.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);font-size:12px">No bootstrap peers saved</div>';
+    return;
+  }
+  for (const addr of list) {
+    const entry = document.createElement('div');
+    entry.className = 'bootstrap-entry';
+    entry.innerHTML = `<span>${addr}</span><button class="btn-remove-bootstrap" data-addr="${addr}">Remove</button>`;
+    container.appendChild(entry);
+  }
+}
+
+document.getElementById('btn-add-bootstrap').addEventListener('click', async () => {
+  const input = document.getElementById('bootstrap-address');
+  const error = document.getElementById('bootstrap-error');
+  error.textContent = '';
+  const addr = input.value.trim();
+  if (!addr) { error.textContent = 'Enter an address.'; return; }
+  const res = await window.ipfs.addBootstrapPeer(addr);
+  if (res.ok) {
+    input.value = '';
+    showToast(`Bootstrap peer added: ${addr}`, 'success');
+    refreshBootstrapList();
+  } else {
+    error.textContent = res.error;
+  }
+});
+
+document.getElementById('bootstrap-list').addEventListener('click', async (e) => {
+  if (!e.target.classList.contains('btn-remove-bootstrap')) return;
+  const addr = e.target.dataset.addr;
+  await window.ipfs.removeBootstrapPeer(addr);
+  showToast('Bootstrap peer removed', 'warning');
+  refreshBootstrapList();
+});
+
+// Bootstrap refresh on Settings tab
+navItems.forEach(item => {
+  if (item.dataset.page === 'settings') {
+    item.addEventListener('click', () => refreshBootstrapList());
+  }
+});
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 renderPeerTable();
 
@@ -544,5 +1034,6 @@ async function loadConfig() {
   if (cfg.announceIp)  document.getElementById('setting-announce-ip').value  = cfg.announceIp;
 }
 loadConfig();
+refreshBootstrapList();
 
 log('info', 'IPFS Privacy Desktop ready. Click "Start Node" to begin.');

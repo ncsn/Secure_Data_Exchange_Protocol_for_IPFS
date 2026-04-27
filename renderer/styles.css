@@ -553,3 +553,320 @@ select:focus { border-color: var(--accent); }
   0%, 100% { box-shadow: 0 0 4px rgba(240, 192, 64, 0.2); }
   50%      { box-shadow: 0 0 12px rgba(240, 192, 64, 0.5); }
 }
+
+/* ── DHT page ──────────────────────────────────────────────── */
+.dht-section {
+  margin-bottom: 32px;
+}
+.dht-section h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.dht-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.dht-table th {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.dht-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* K-Bucket rows — collapsible */
+.bucket-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.bucket-row:hover td { background: var(--bg2); }
+.bucket-toggle {
+  font-size: 10px;
+  color: var(--muted);
+  transition: transform 0.2s;
+  text-align: center;
+  width: 32px;
+}
+.bucket-row.open .bucket-toggle { transform: rotate(90deg); }
+
+.bucket-peers {
+  display: none;
+}
+.bucket-row.open + .bucket-peers {
+  display: table-row;
+}
+.bucket-peers td {
+  padding: 0 14px 10px 44px;
+  background: var(--bg2);
+}
+.bucket-peers-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bucket-peer-entry {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  align-items: center;
+}
+.bucket-peer-entry .muted { color: var(--muted); font-size: 11px; }
+
+/* Self-owned badge */
+.badge-self {
+  background: rgba(240, 192, 64, 0.12);
+  color: var(--yellow);
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-left: 6px;
+}
+
+/* Cache table — match peer table style */
+#cache-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+#cache-table th {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+#cache-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* ── Toast notifications ───────────────────────────────────── */
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  min-width: 280px;
+  max-width: 380px;
+  font-size: 13px;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateX(40px);
+  animation: toast-in 0.3s ease forwards;
+}
+.toast.removing { animation: toast-out 0.3s ease forwards; }
+.toast-success { border-left: 3px solid var(--green); }
+.toast-error   { border-left: 3px solid var(--red); }
+.toast-info    { border-left: 3px solid var(--accent); }
+.toast-warning { border-left: 3px solid var(--yellow); }
+.toast-message { color: var(--text); line-height: 1.4; }
+@keyframes toast-in  { to { opacity: 1; transform: translateX(0); } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(40px); } }
+
+/* ── Storage tab ───────────────────────────────────────────── */
+#storage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+#storage-table th {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+#storage-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+}
+#storage-tbody tr:hover td { background: var(--bg2); }
+
+.storage-usage-bar {
+  height: 24px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  position: relative;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.usage-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: var(--radius);
+  transition: width 0.3s;
+  width: 0%;
+}
+.usage-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.badge-recursive { background: rgba(62, 207, 142, 0.12); color: var(--green); }
+.badge-direct    { background: rgba(79, 158, 255, 0.12); color: var(--accent); }
+.badge-indirect  { background: rgba(136, 146, 164, 0.12); color: var(--muted); }
+
+.btn-pin-block, .btn-unpin-block {
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--bg3);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: var(--radius);
+  cursor: pointer;
+  margin-right: 4px;
+}
+.btn-pin-block:hover, .btn-unpin-block:hover { background: var(--accent); color: #fff; }
+.btn-delete-block {
+  padding: 4px 10px;
+  font-size: 11px;
+  background: var(--bg3);
+  border: 1px solid var(--red);
+  color: var(--red);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.btn-delete-block:hover { background: var(--red); color: #fff; }
+
+/* ── Privacy health card ──────────────────────────────────── */
+.privacy-health-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 28px;
+}
+.privacy-health-card h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.privacy-score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.privacy-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.privacy-dot.good    { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.privacy-dot.fair    { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+.privacy-dot.poor    { background: var(--red); box-shadow: 0 0 8px var(--red); }
+#privacy-score-text  { font-size: 15px; font-weight: 600; }
+.privacy-details {
+  display: flex;
+  gap: 24px;
+}
+.privacy-detail {
+  font-size: 12px;
+  color: var(--muted);
+}
+.privacy-detail span:last-child { color: var(--text); }
+
+/* ── Network topology ─────────────────────────────────────── */
+.topology-container {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 28px;
+  position: relative;
+}
+#topology-canvas {
+  width: 100%;
+  height: 400px;
+  display: block;
+}
+.topo-tooltip {
+  position: absolute;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--accent);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+}
+.topo-tooltip.hidden { display: none; }
+
+/* ── Bootstrap peers ──────────────────────────────────────── */
+.bootstrap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.bootstrap-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.btn-remove-bootstrap {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: var(--bg3);
+  border: 1px solid var(--red);
+  color: var(--red);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.btn-remove-bootstrap:hover { background: var(--red); color: #fff; }
