@@ -1,0 +1,120 @@
+(*public channel*)
+free c : channel.
+
+free secr: bitstring [private]. (*object*)
+free test:bitstring [private].
+
+(*Types*)
+
+(*Asymmetric encryption.*)
+type skey.
+type pkey.
+(*Digital signatures.*)
+type sskey.
+type spkey. 
+
+(*Symmetric encryption function*)
+fun senc(bitstring , bitstring): bitstring .
+fun sdec(bitstring , bitstring): bitstring . 
+
+equation forall m: bitstring , k: bitstring; sdec(senc(m,k),k) = m. 
+equation forall m: bitstring , k: bitstring; senc(sdec(m,k),k) = m.
+
+(*Asymmetric encryption function*)
+ 
+fun pk(skey): pkey. 
+fun aenc(bitstring , pkey): bitstring .
+reduc forall m: bitstring , k: skey; adec(aenc(m, pk(k)) ,k) = m.
+
+(*Digital signatures function*)
+fun spk(sskey ): spkey. 
+fun sign(bitstring , sskey ): bitstring.
+reduc forall m: bitstring , k: sskey; getmess(sign(m,k)) = m.
+reduc forall m: bitstring , k: sskey; checksign(sign(m,k),spk(k)) = m.
+
+(* Hash *)
+fun H(bitstring): bitstring.
+
+(* Key to bitstring *)
+fun k2b(pkey): bitstring.
+
+(* Events - authentication *)
+event Node_A_start(bitstring).
+event Node_B_start(bitstring).
+event Node_B_internal(bitstring).
+event Node_A_internal(bitstring).
+event Node_B_end(bitstring).
+event Node_A_end(bitstring).
+
+(*B node authentication*)
+query a1:bitstring,a2:bitstring,a4:bitstring; 
+		event(Node_B_internal(a2)) ==> 
+			event(Node_A_start(a1)).
+
+query a1:bitstring,a2:bitstring,a4:bitstring; 
+		event(Node_A_end(a2)) ==> 
+			event(Node_B_end(a1)).
+			
+query a1:bitstring,a2:bitstring,a3:bitstring,a4:bitstring,a5:bitstring; 
+event(Node_A_end(a5)) ==> 
+		(event(Node_B_end(a4)) ==> 
+			(event(Node_A_internal(a3))==> 
+				(event(Node_B_internal(a2)) ==>
+					event(Node_A_start(a1))))).
+							   
+(* Secrecy *)
+
+query attacker (secr).
+query attacker(test).
+
+(*A Node*)
+let A(pksA:spkey,sskA:sskey,pkB:pkey,pksB:spkey,obj:bitstring, TS:bitstring)=
+	event Node_A_start(obj);
+	let CID1 = H(obj) in
+	let CID2 = H(CID1) in
+	let CID3 = H(CID2) in
+	out(c, CID3);
+	in(c, (SignB3:bitstring,pkB1:pkey));
+	if checksign(SignB3,pksB) = CID2 then
+	new K_AB:bitstring;
+	event Node_A_internal(K_AB);
+	out(c, aenc((CID1,K_AB),pkB));
+	in(c, senc_B:bitstring);
+	let (secr2:bitstring,obj2:bitstring) = sdec(senc_B, CID1) in
+	if obj = obj2 then
+	event Node_A_end(obj);
+	out(c,test)
+	.		
+
+(*B Node*)
+let B(pkB:pkey,pksB:spkey,skB:skey,sskB:sskey,obj:bitstring, TS:bitstring)=
+	event Node_B_start(obj);
+	let CID1 = H(obj) in
+	let CID2 = H(CID1) in
+	let CID3 = H(CID2) in
+	in(c, CID3_A:bitstring);
+	if CID3 = CID3_A then
+	event Node_B_internal(CID3_A);
+	let SignB2= sign(CID2 , sskB) in
+	out(c, (SignB2, pkB));
+	in(c,(enc1:bitstring));
+	let (CID1_A:bitstring,K_BA:bitstring) = adec(enc1,skB) in
+	if CID1_A=CID1 then
+	let AES_CID1= senc((secr,obj),CID1) in
+	event Node_B_end(AES_CID1);
+	out(c, AES_CID1)
+	.		
+
+	
+(*Main process*)
+process
+	new sskA:sskey;
+	new skB:skey;
+	new sskB:sskey;
+	new obj: bitstring;
+	new TS:bitstring;
+	let pksA= spk(sskA) in out(c,pksA);
+	let pkB=pk(skB) in out(c,pkB);
+	let pksB= spk(sskB) in out(c,pksB);
+ ((!A(pksA,sskA,pkB,pksB, obj, TS)) | (!B(pkB,pksB,skB,sskB,obj, TS)))
+	
