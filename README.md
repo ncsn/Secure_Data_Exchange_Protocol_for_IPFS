@@ -1,4 +1,4 @@
-# IPFS Privacy Desktop
+# Secure Data Exchange Protocol for IPFS - IPFS Desktop Implementation
 
 Electron desktop application for the **Triple-Hash Enhanced Privacy Protocol** — a privacy-preserving file sharing system built on IPFS concepts with a custom Kademlia DHT, Bitswap engine, and 4-step authenticated handshake.
 
