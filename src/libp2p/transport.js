@@ -32,27 +32,22 @@
  *     Could use varint length prefixes (like real libp2p) for smaller overhead
  *     on short messages. Replace readFramed/writeFramed to change this.
  *
- * ── Peer handshake ───────────────────────────────────────────────────────────
+ * ── Peer identification ───────────────────────────────────────────────────
  *
  *   On every new connection (dial or accept), both sides:
  *     1. Send their raw public key (DER-encoded SPKI)
  *     2. Receive the remote's public key
  *     3. Derive the remote's PeerId from the key
- *     4. Optionally verify a signed challenge (TODO: noise protocol)
  *
- *   SWAP POINT — security:
- *     Real libp2p uses the Noise protocol (XX handshake) for mutual
- *     authentication and forward secrecy. Our handshake only exchanges
- *     public keys without a signed challenge — sufficient for a learning
- *     implementation where peers are assumed semi-trusted.
- *     To add Noise: replace performHandshake() with a Noise XX implementation.
+ *   No challenge-response authentication is performed at this layer.
+ *   Mutual authentication is provided by the application-layer privacy
+ *   protocol (ECDSA signatures over CID² and ECIES encryption).
  */
 
 import net              from 'net';
 import EventEmitter     from 'events';
-import { createPublicKey, randomBytes, timingSafeEqual } from 'crypto';
+import { createPublicKey } from 'crypto';
 import { PeerId }       from './peer.js';
-import { sign, verify } from './crypto.js';
 
 // ── Connection ────────────────────────────────────────────────────────────────
 
@@ -172,66 +167,39 @@ export class Connection extends EventEmitter {
 /**
  * performHandshake(conn) → Promise<void>
  *
- * Two-round authenticated handshake:
+ * Lightweight peer identification exchange:
  *
- *   Round 1 (simultaneous): each side sends [ pubKeyLen(2) | pubKeyBytes | nonce(32) ]
- *   Round 2 (simultaneous): each side signs the nonce it received and sends the signature
+ *   Each side sends: [ pubKeyLen(2) | pubKeyBytes ]
  *
- * After Round 2, both sides have:
- *   - The remote's public key (and derived PeerId)
- *   - Proof that the remote holds the corresponding private key
+ * After the exchange, both sides know the remote's PeerId (derived from
+ * their public key). No challenge-response authentication is performed here
+ * because the application-layer privacy protocol (ECDSA signatures over CID²
+ * and ECIES encryption) already provides mutual authentication.
  *
  * @param {Connection} conn
- * @returns {Promise<void>} resolves when handshake is complete
+ * @returns {Promise<void>} resolves when peer identification is complete
  */
 export function performHandshake(conn) {
   return new Promise((resolve, reject) => {
-    // Generate a fresh 32-byte challenge nonce for the remote to sign
-    const localNonce  = randomBytes(32);
     const pubKeyBytes = Buffer.from(conn.localPeer.publicKeyRaw);
 
-    // Round 1: send [ pubKeyLen(2) | pubKeyBytes | nonce(32) ]
-    const r1 = Buffer.alloc(2 + pubKeyBytes.length + 32);
-    r1.writeUInt16BE(pubKeyBytes.length, 0);
-    pubKeyBytes.copy(r1, 2);
-    localNonce.copy(r1, 2 + pubKeyBytes.length);
-    conn.sendMessage('/handshake/1.0', r1);
-
-    let round = 1;
+    // Send [ pubKeyLen(2) | pubKeyBytes ]
+    const msg = Buffer.alloc(2 + pubKeyBytes.length);
+    msg.writeUInt16BE(pubKeyBytes.length, 0);
+    pubKeyBytes.copy(msg, 2);
+    conn.sendMessage('/handshake/1.0', msg);
 
     conn.onMessage('/handshake/1.0', (payload) => {
       try {
-        if (round === 1) {
-          // Parse remote's Round 1: [ pubKeyLen(2) | pubKeyBytes | nonce(32) ]
-          const pkLen         = payload.readUInt16BE(0);
-          const remotePubRaw  = payload.slice(2, 2 + pkLen);
-          const remoteNonce   = payload.slice(2 + pkLen, 2 + pkLen + 32);
+        // Parse remote's public key
+        const pkLen        = payload.readUInt16BE(0);
+        const remotePubRaw = payload.slice(2, 2 + pkLen);
 
-          if (remoteNonce.length !== 32) {
-            throw new Error('Round 1: nonce missing or truncated');
-          }
+        // Derive remote peer identity from their public key
+        const remotePubKey = createPublicKey({ key: remotePubRaw, type: 'spki', format: 'der' });
+        conn.remotePeer    = PeerId.fromPublicKey(remotePubKey, remotePubRaw);
 
-          // Derive remote peer identity from their public key
-          const remotePubKey  = createPublicKey({ key: remotePubRaw, type: 'spki', format: 'der' });
-          conn.remotePeer     = PeerId.fromPublicKey(remotePubKey, remotePubRaw);
-
-          // Round 2: sign the nonce we received, send signature
-          const sig = sign(remoteNonce, conn.localPeer.privateKey);
-          conn.sendMessage('/handshake/1.0', sig);
-
-          round = 2;
-
-        } else if (round === 2) {
-          // payload = remote's signature of localNonce
-          // Verify they hold the private key corresponding to the public key in Round 1
-          const sigValid = verify(localNonce, payload, conn.remotePeer.publicKey);
-          if (!sigValid) {
-            throw new Error('Round 2: remote failed private-key challenge');
-          }
-
-          conn.emit('ready', conn.remotePeer);
-          resolve();
-        }
+        resolve();
       } catch (err) {
         reject(new Error(`Handshake failed: ${err.message}`));
       }

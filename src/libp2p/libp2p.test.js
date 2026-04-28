@@ -26,7 +26,6 @@
  *     16. Connection closes when receiving a frame with oversized protocol name
  *     17. Connection closes when receiving a frame with oversized payload
  *     18. Handshake times out when remote peer doesn't respond
- *     19. Handshake rejects invalid nonce signature
  */
 
 import net from 'net';
@@ -324,53 +323,6 @@ async function run() {
 
     silentServer.close();
     transG.stop();
-  });
-
-  // 19. Handshake rejects invalid nonce signature
-  await test('Handshake rejects invalid nonce signature', async () => {
-    const peerH = PeerId.create();
-    const peerI = PeerId.create(); // impersonator
-
-    // Start a TCP server that sends a valid Round 1 but a garbage signature in Round 2
-    const fakeServer = net.createServer((socket) => {
-      const fakeConn = new Connection(socket, peerI);
-
-      // Send Round 1: valid pubkey + nonce
-      const pubKeyBytes = Buffer.from(peerI.publicKeyRaw);
-      const fakeNonce = Buffer.alloc(32, 0xaa);
-      const r1 = Buffer.alloc(2 + pubKeyBytes.length + 32);
-      r1.writeUInt16BE(pubKeyBytes.length, 0);
-      pubKeyBytes.copy(r1, 2);
-      fakeNonce.copy(r1, 2 + pubKeyBytes.length);
-      fakeConn.sendMessage('/handshake/1.0', r1);
-
-      // When we receive Round 1 from the dialer, send a garbage signature as Round 2
-      fakeConn.onMessage('/handshake/1.0', () => {
-        const garbageSig = Buffer.alloc(64, 0xff); // invalid signature
-        fakeConn.sendMessage('/handshake/1.0', garbageSig);
-      });
-    });
-
-    const fakePort = await new Promise((resolve, reject) => {
-      fakeServer.listen(0, '127.0.0.1', () => resolve(fakeServer.address().port));
-      fakeServer.on('error', reject);
-    });
-
-    const transH = new TCPTransport(peerH);
-    let threw = false;
-    try {
-      await transH.dial('127.0.0.1', fakePort);
-    } catch (e) {
-      threw = true;
-      assert(
-        e.message.includes('failed') || e.message.includes('Handshake') || e.message.includes('challenge'),
-        `Expected handshake failure, got: ${e.message}`
-      );
-    }
-    assert(threw, 'Expected handshake to reject invalid signature');
-
-    fakeServer.close();
-    transH.stop();
   });
 
   // Cleanup
