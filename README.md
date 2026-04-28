@@ -142,10 +142,10 @@ Standard IPFS publishes content-addressed CIDs to a public DHT. Anyone observing
 ```
 Requester (A)                     Owner (B)
     |                                 |
-    |--- WANT_HAVE(CID3) ----------->|     Step 1: A searches by public CID
-    |<-- sign(CID2) -----------------|     Step 2: B proves ownership
-    |--- ecies(CID1 + K, B_pub) ---->|     Step 3: A sends encrypted CID1 + session key
-    |<-- aes_K(file) ----------------|     Step 4: B sends encrypted file
+    |--- WANT_HAVE(CID3) ------------>|     Step 1: A searches by public CID
+    |<-- sign(CID2) ----------------->|     Step 2: B proves ownership
+    |--- ecies(CID1 + K, B_pub) ----->|     Step 3: A sends encrypted CID1 + session key
+    |<-- aes_K(file) ---------------->|     Step 4: B sends encrypted file
     |                                 |
     verify H(decrypted) == CID1 digest
 ```
@@ -385,7 +385,3 @@ The protocol has been formally verified using **ProVerif** under the Dolev-Yao a
 - Resistance to MITM and replay attacks
 
 ---
-
-## License
-
-ISC
