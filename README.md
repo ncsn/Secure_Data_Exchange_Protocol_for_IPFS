@@ -16,12 +16,12 @@ The **4-step Enhanced Privacy Protocol** prevents the DHT from ever learning whi
 
 ```
 Requester (A)                     Owner (B)
-    |                                 |
-    |--- WANT_HAVE(CID3) ---------->|     Step 1: A searches by public CID
-    |<-- PRIVACY_CHALLENGE(sig(CID2))|    Step 2: B proves ownership
-    |--- PRIVACY_RESPONSE ---------->|     Step 3: A sends ecies(CID1 + K, B_pubkey)
-    |<-- PRIVACY_BLOCK(aes_K(file)) -|    Step 4: B sends encrypted file
-    |                                 |
+    |                                  |
+    |--- WANT_HAVE(CID3) ------------->|     Step 1: A searches by public CID
+    |<-- PRIVACY_CHALLENGE(sig(CID2))->|    Step 2: B proves ownership
+    |--- PRIVACY_RESPONSE ------------>|     Step 3: A sends ecies(CID1 + K, B_pubkey)
+    |<-- PRIVACY_BLOCK(aes_K(file)) -->|    Step 4: B sends encrypted file
+    |                                  |
     verify H(decrypted) == CID1 digest
 ```
 
@@ -163,10 +163,10 @@ ipfs-desktop/
 
 ```
 Cache (C)                          Owner (B)
-    |--- WANT_HAVE(CID3) ---------->|
-    |<-- PRIVACY_CHALLENGE(sig(CID2))|
-    |--- CACHE_REQUEST(ecies(K+pub))->|
-    |<-- CACHE_RESPONSE --------------|
+    |--- WANT_HAVE(CID3) ------------->|
+    |<-- PRIVACY_CHALLENGE(sig(CID2))->|
+    |--- CACHE_REQUEST(ecies(K+pub))-->|
+    |<-- CACHE_RESPONSE -------------->|
     |    aes_K(aes(file, H(CID1)) + timestamp) + authorization
     store encrypted blob (never learns CID1)
 ```
