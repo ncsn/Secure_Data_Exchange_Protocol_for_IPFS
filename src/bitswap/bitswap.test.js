@@ -254,7 +254,7 @@ async function run() {
     const cid1Digest  = cid1.digest;
 
     // A requests via privacy protocol
-    const received = await bsA.requestPrivate(cid3.string, cid1Digest, K, connA);
+    const received = await bsA.requestPrivate(cid3.string, cid1Digest, connA);
 
     assert(received.equals(objData), 'Privacy: received object does not match original');
   });
@@ -272,7 +272,7 @@ async function run() {
 
     let threw = false;
     try {
-      await bsA.requestPrivate(cid3.string, wrongCid1, K, connA);
+      await bsA.requestPrivate(cid3.string, wrongCid1, connA);
     } catch (e) {
       threw = true;
       // Expect either a DONT_HAVE rejection or a verification failure message
@@ -403,14 +403,14 @@ async function run() {
 
     // Collect two PRIVACY_CHALLENGE payloads by doing two full handshakes
     const K1 = randomAesKey();
-    const received1 = await bsA.requestPrivate(cid3.string, cid1.digest, K1, connA);
+    const received1 = await bsA.requestPrivate(cid3.string, cid1.digest, connA);
     assert(received1.equals(objData), 'First retrieval should succeed');
 
     // Second retrieval — new pair needed because pending state is consumed
     const { bsA: bsA2, bsB: bsB2, connA: connA2 } = await makePair();
     bsB2.registerOwned(objData);
     const K2 = randomAesKey();
-    const received2 = await bsA2.requestPrivate(cid3.string, cid1.digest, K2, connA2);
+    const received2 = await bsA2.requestPrivate(cid3.string, cid1.digest, connA2);
     assert(received2.equals(objData), 'Second retrieval should succeed');
 
     // Both succeeded — the nonce mechanism is working if the signature verification
@@ -701,7 +701,7 @@ async function run() {
     // Also verify requestPrivate rejects
     threw = false;
     try {
-      await bsA.requestPrivate('bafkreioverflow00000000000000000000000000000000000000000000001', randomBytes(32), randomBytes(32), fakeConn);
+      await bsA.requestPrivate('bafkreioverflow00000000000000000000000000000000000000000000001', randomBytes(32), fakeConn);
     } catch (e) {
       threw = true;
       assert(e.message.includes('Too many pending'), `Expected "Too many pending", got: ${e.message}`);
@@ -720,8 +720,7 @@ async function run() {
     const { cid1, cid3 } = bsB.registerOwned(objData);
 
     // Complete a successful privacy handshake
-    const K = randomAesKey();
-    const received = await bsA.requestPrivate(cid3.string, cid1.digest, K, connA);
+    const received = await bsA.requestPrivate(cid3.string, cid1.digest, connA);
     assert(received.equals(objData), 'First retrieval should succeed');
 
     // The pending entry for cid3 is now consumed (deleted from _pending).

@@ -284,13 +284,10 @@ export class Node {
       if (data) return data;
     }
 
-    // Generate a fresh AES session key for this retrieval
-    const K = randomAesKey();
-
     // Try connected peers directly first (they may have it in their Bitswap engine)
     for (const [, conn] of this.transport.connections) {
       try {
-        const bytes = await this.bitswap.requestPrivate(cid3String, cid1Digest, K, conn);
+        const bytes = await this.bitswap.requestPrivate(cid3String, cid1Digest, conn);
         this._fireDecoys(); // mix real traffic with decoys
         return bytes;
       } catch {
@@ -327,7 +324,7 @@ export class Node {
           // for this new connection before we send the first message.
           await new Promise(r => setTimeout(r, 20));
         }
-        const bytes = await this.bitswap.requestPrivate(cid3String, cid1Digest, K, conn);
+        const bytes = await this.bitswap.requestPrivate(cid3String, cid1Digest, conn);
         this._fireDecoys(); // mix real traffic with decoys
         return bytes;
       } catch {

@@ -60,7 +60,54 @@ const GCM_TAG_BYTES = 16;
 /** IV (nonce) length in bytes for AES-GCM. */
 const GCM_IV_BYTES = 12;
 
-export { CURVE, SIGN_HASH, ECIES_CIPHER, ECIES_KEY_BYTES };
+export { CURVE, SIGN_HASH, ECIES_CIPHER, ECIES_KEY_BYTES, GCM_IV_BYTES, GCM_TAG_BYTES };
+
+// ── Diffie-Hellman (ECDH) helpers ────────────────────────────────────────────
+//
+// Used by the enhanced privacy protocol (Figure 2 of the paper):
+//   Step 2: B generates (gb, Gb) and sends Gb
+//   Step 3: A generates (ga, Ga) and sends Ga
+//   Both derive K_AB = ECDH(ga, Gb) = ECDH(gb, Ga)
+//   The session key provides forward secrecy: compromising long-term keys
+//   does not reveal K_AB.
+
+/**
+ * generateDHKeyPair() → { privateKey: Buffer, publicKey: Buffer }
+ *
+ * Generates an ephemeral ECDH key pair for Diffie-Hellman key exchange.
+ * publicKey is the 65-byte uncompressed point (Ga or Gb in the paper).
+ * privateKey is the raw scalar (32 bytes for P-256).
+ */
+export function generateDHKeyPair() {
+  const ecdh = createECDH(ecCurveName(CURVE));
+  ecdh.generateKeys();
+  return {
+    privateKey: ecdh.getPrivateKey(),
+    publicKey: ecdh.getPublicKey(), // 65-byte uncompressed
+  };
+}
+
+/**
+ * computeDHSecret(myPrivateKey, theirPublicKey) → Buffer (32-byte AES key)
+ *
+ * Computes the shared secret from ECDH and derives an AES-256 session key
+ * using HKDF-SHA256. This is K_AB = KDF(ECDH(a, Gb)) = KDF(ECDH(b, Ga)).
+ *
+ * @param {Buffer} myPrivateKey    — raw ECDH private scalar
+ * @param {Buffer} theirPublicKey  — 65-byte uncompressed ECDH public key
+ * @returns {Buffer} 32-byte AES-256 session key
+ */
+export function computeDHSecret(myPrivateKey, theirPublicKey) {
+  const ecdh = createECDH(ecCurveName(CURVE));
+  ecdh.setPrivateKey(myPrivateKey);
+  const sharedSecret = ecdh.computeSecret(theirPublicKey);
+  // Derive a 32-byte AES key using HKDF with a fixed salt
+  // The raw ECDH shared secret is already unique per session (ephemeral keys),
+  // so a constant salt is safe and ensures both parties derive the same key.
+  const salt = Buffer.from('ipfs-triple-hash-dh-salt');
+  const info = Buffer.from('ipfs-privacy-session-key');
+  return Buffer.from(hkdfSync('sha256', sharedSecret, salt, info, ECIES_KEY_BYTES));
+}
 
 // ── Key pair ──────────────────────────────────────────────────────────────────
 

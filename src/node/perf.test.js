@@ -104,8 +104,13 @@ async function run() {
   for (let i = 0; i < ITERATIONS; i++) {
     const t0 = performance.now();
     try {
-      await requester.sendDecoy();
-      decoyTimes.push(performance.now() - t0);
+      const result = await requester.sendDecoy();
+      const elapsed = performance.now() - t0;
+      if (result && result.ok) {
+        decoyTimes.push(elapsed);
+      } else {
+        decoyFailures++;
+      }
     } catch {
       decoyFailures++;
     }
