@@ -137,18 +137,21 @@ Standard IPFS publishes content-addressed CIDs to a public DHT. Anyone observing
 | **CID2** | `H(H(file))` | Secret (never leaves owner) | Ownership proof (signed challenge) |
 | **CID3** | `H(H(H(file)))` | Public (published to DHT) | Network discovery — cannot be reversed to CID1 |
 
-### The 4-Step Enhanced Privacy Protocol
+### The 5-Step Enhanced Privacy Protocol (with DH Key Exchange)
 
 ```
 Requester (A)                     Owner (B)
     |                                 |
     |--- WANT_HAVE(CID3) ------------>|     Step 1: A searches by public CID
-    |<-- sign(CID2) ----------------->|     Step 2: B proves ownership
-    |--- ecies(CID1 + K, B_pub) ----->|     Step 3: A sends encrypted CID1 + session key
+    |<-- sign(CID2) + DH_pubB ------->|     Step 2: B proves ownership + sends DH public key
+    |--- ecies(CID1, B_pub) + DH_pubA>|     Step 3: A sends encrypted CID1 + DH public key
+    |    K = HKDF(ECDH(A,B))          |     Both derive shared session key via ECDH
     |<-- aes_K(file) ---------------->|     Step 4: B sends encrypted file
     |                                 |
     verify H(decrypted) == CID1 digest
 ```
+
+The session key `K` is now derived via **Elliptic Curve Diffie-Hellman** (ECDH on P-256) + HKDF-SHA256, providing forward secrecy — compromising a long-term key does not reveal past session keys.
 
 ### Decoy Requests
 
@@ -182,7 +185,7 @@ Cache nodes store and serve encrypted content without ever learning CID1. The in
 - **End-to-end encryption** — ECIES key exchange + AES-256-GCM block encryption
 - **Traffic analysis resistance** — Decoy requests indistinguishable from real requests on the wire
 - **Zero-knowledge caching** — Cache nodes store encrypted blobs, never learn CID1
-- **Forward secrecy** — Each session uses an independent AES key
+- **Forward secrecy** — ECDH ephemeral key exchange ensures each session key is independent; compromise of long-term keys cannot decrypt past sessions
 
 ### Cryptographic Primitives
 
@@ -191,6 +194,7 @@ Cache nodes store and serve encrypted content without ever learning CID1. The in
 | Content hashing | SHA-256 (32-byte digest) |
 | Identity keys | ECDSA on NIST P-256 |
 | Digital signatures | ECDSA-SHA256 (DER-encoded) |
+| Key exchange | ECDH on P-256 + HKDF-SHA256 (forward secrecy) |
 | Asymmetric encryption | ECIES with HKDF-SHA256 + AES-256-GCM |
 | Session encryption | AES-256-GCM (12-byte IV, 16-byte auth tag) |
 
@@ -280,8 +284,8 @@ Core Node (src/)
 ### Unit and Integration Tests
 
 ```bash
-node src/libp2p/libp2p.test.js         # Transport + crypto (18 tests)
-node src/bitswap/bitswap.test.js        # Bitswap + privacy protocol (20 tests)
+node src/libp2p/libp2p.test.js         # Transport + crypto
+node src/bitswap/bitswap.test.js        # Bitswap + privacy protocol + DH key exchange (20 tests)
 node src/node/node.test.js              # End-to-end integration (14 tests)
 node src/dht/dht.test.js                # DHT routing + provider lookup
 node src/cid/cid.test.js                # CID + triple hash
@@ -295,7 +299,7 @@ node src/unixfs/unixfs.test.js          # File chunking + directories
 node src/node/perf.test.js    # 50-iteration benchmark (3 nodes, localhost)
 ```
 
-Measures: TCP handshake, file add, privacy retrieval, decoy request, cache population, cache retrieval.
+Measures: TCP handshake, file add, privacy retrieval, decoy request, cache population, cache retrieval. Outputs a before/after comparison table (pre-ECDH vs post-ECDH migration).
 
 ### Docker Integration Test
 
@@ -320,10 +324,11 @@ docker compose down
 
 ### Key Rules
 
-<<<<<<< HEAD
-- **Get File** always uses **CID1** (the private CID)
-- **Cache** always uses **CID3** (the public CID)
-- **CID2** is never shared — the system uses it internally for ownership proofs
+| CID | Use in... | Never use in... |
+|-----|-----------|-----------------|
+| **CID1** | Get File | Cache tab |
+| **CID3** | Cache tab | Get File |
+| **CID2** | Never shared | — |
 
 ### Encrypted Caching
 
@@ -344,13 +349,6 @@ Prevents traffic analysis by sending fake requests indistinguishable from real o
 - Step 3: sends `ecies(DECOY_FLAG)` instead of `ecies(CID1+K)` — encrypted, so observers can't tell
 - Step 4: owner sends random bytes back
 - After each real retrieval, 1-3 automatic decoys fire in the background
-=======
-| CID | Use in... | Never use in... |
-|-----|-----------|-----------------|
-| **CID1** | Get File | Cache tab |
-| **CID3** | Cache tab | Get File |
-| **CID2** | Never shared | — |
->>>>>>> b140bbc (refactor: remove redundant transport-layer ECDSA nonce authentication)
 
 ### CLI Retrieval
 
