@@ -17,7 +17,6 @@ Electron desktop application implementing the **Secure Data Exchange Protocol** 
 - [Testing](#testing)
 - [Usage Guide](#usage-guide)
 - [Troubleshooting](#troubleshooting)
-- [License](#license)
 
 ---
 
